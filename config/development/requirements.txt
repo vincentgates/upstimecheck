@@ -1,5 +1,6 @@
 Fabric
 Flask
+Flask-Login
 Flask-SQLAlchemy
 gunicorn
 Jinja2
@@ -10,6 +11,5 @@ coverage
 ecdsa
 itsdangerous
 paramiko
-pycrypto
 Flask-WTF
 pytest-xdist

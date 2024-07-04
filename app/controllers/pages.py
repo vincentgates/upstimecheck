@@ -18,6 +18,9 @@ def home():
 def about():
     return render_template('pages/placeholder.about.html')
 
+@blueprint.route('/cal')
+def calendar():
+    return render_template('pages/calendar.html')
 
 @blueprint.route('/login')
 def login():
