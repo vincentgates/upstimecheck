@@ -2,8 +2,11 @@ Fabric
 Flask
 Flask-Login
 Flask-SQLAlchemy
+Flask-Script
+Flask-Assets
 gunicorn
 Jinja2
+libsass
 MarkupSafe
 SQLAlchemy
 Werkzeug
@@ -13,3 +16,4 @@ itsdangerous
 paramiko
 Flask-WTF
 pytest-xdist
+watchdog
