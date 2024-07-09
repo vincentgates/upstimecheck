@@ -1,68 +1,91 @@
-
-/**
- * @file
- * Main stylesheet file.
- */
-
-
-/*****************************************************************************
- * Main elements
- ****************************************************************************/
- .roboto-thin {
-    font-family: "Roboto", sans-serif;
-    font-weight: 100;
-    font-style: normal;
-  }
-  
-  .roboto-light, * {
-    font-family: "Roboto", sans-serif;
-    font-weight: 300;
-    font-style: normal;
-  }
-  
-  .roboto-regular, h1, h2, h3 {
-    font-family: "Roboto", sans-serif;
-    font-weight: 400;
-    font-style: normal;
-  }
-  
-  .roboto-medium {
-    font-family: "Roboto", sans-serif;
-    font-weight: 500;
-    font-style: normal;
-  }
-  
-  .roboto-thin-italic {
-    font-family: "Roboto", sans-serif;
-    font-weight: 100;
-    font-style: italic;
-  }
-  
-  .roboto-light-italic {
-    font-family: "Roboto", sans-serif;
-    font-weight: 300;
-    font-style: italic;
-  }
-  
-  .roboto-regular-italic {
-    font-family: "Roboto", sans-serif;
-    font-weight: 400;
-    font-style: italic;
-  }
-  
-  .roboto-medium-italic {
-    font-family: "Roboto", sans-serif;
-    font-weight: 500;
-    font-style: italic;
-  }
-  
+// Override Bootstrap's Sass default variables
+//
+// Nearly all variables in Bootstrap are written with the `!default` flag.
+// This allows you to override the default values of those variables before
+// you import Bootstrap's source Sass files.
+//
+// Overriding the default variable values is the best way to customize your
+// CSS without writing _new_ styles. For example, change you can either change
+// `$body-color` or write more CSS that override's Bootstrap's CSS like so:
+// `body { color: red; }`.
 
 
-/* Main elements end */
+//
+// Bring in Bootstrap
+//
 
-#testing2 {color: green;}
-/*****************************************************************************
- * Various other styles
- ****************************************************************************/
+// Option 1
+//
+// Import all of Bootstrap's CSS
 
-/* Various other styles end */
+// @import "bootstrap/scss/bootstrap";
+
+// Option 2
+//
+// Place variable overrides first, then import just the styles you need. Note that some stylesheets are required no matter what.
+
+// Toggle global options
+$enable-gradients: true;
+$enable-shadows: true;
+
+// Customize some defaults
+// $body-color: #333;
+// $body-bg: #fff;
+// $border-radius: .4rem;
+// $success: #7952b3;
+
+@import "bootstrap/functions"; // Required
+@import "bootstrap/variables"; // Required
+@import "bootstrap/mixins"; // Required
+
+@import "bootstrap/root"; // Required
+@import "bootstrap/reboot"; // Required
+@import "bootstrap/type";
+@import "bootstrap/images";
+// @import "bootstrap/code";
+@import "bootstrap/grid";
+@import "bootstrap/tables";
+@import "bootstrap/forms";
+@import "bootstrap/buttons";
+@import "bootstrap/transitions";
+@import "bootstrap/dropdown";
+@import "bootstrap/button-group";
+@import "bootstrap/input-group"; // Requires forms
+@import "bootstrap/custom-forms";
+@import "bootstrap/nav";
+@import "bootstrap/navbar"; // Requires nav
+@import "bootstrap/card";
+// @import "bootstrap/breadcrumb";
+// @import "bootstrap/pagination";
+// @import "bootstrap/badge";
+// @import "bootstrap/jumbotron";
+@import "bootstrap/alert";
+// @import "bootstrap/progress";
+// @import "bootstrap/media";
+@import "bootstrap/list-group";
+@import "bootstrap/close";
+// @import "bootstrap/toasts";
+@import "bootstrap/modal"; // Requires transitions
+// @import "bootstrap/tooltip";
+// @import "bootstrap/popover";
+// @import "bootstrap/carousel";
+// @import "bootstrap/spinners";
+@import "bootstrap/utilities";
+// @import "bootstrap/print";
+
+
+//
+// Custom styles
+//
+
+@import "icon-list";
+@import "font-awesome";
+
+@import "font-roboto";
+@import "layout-forms";
+@import "layout-main";
+
+// Style Bootstrap icons
+.bi {
+  fill: currentcolor;
+}

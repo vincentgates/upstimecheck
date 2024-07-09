@@ -23,10 +23,14 @@ for route, name in app_placeholder.items():
     blueprint.add_url_rule(route, endpoint=f"pages_{name}", view_func=create_route(template_path))
 
 # Routes with forms
-@blueprint.route('/login')
+@blueprint.route('/login', methods=['GET', 'POST'])
 def login():
     form = LoginForm(request.form)
+    if request.method == 'POST' and form.validate():
+        return render_template('pages/placeholder.calendar.html')
+
     return render_template('forms/login.html', form=form)
+
 
 @blueprint.route('/register')
 def register():
