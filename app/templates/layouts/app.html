@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en" class="h-100" data-bs-theme="auto">
+{% include 'partials/head.html' %}
+  <body id="main" class="d-flex flex-column h-100">
+    {% include 'partials/navbar.html' %}
+    {% include 'partials/header.html' %}
+    <!-- Begin content -->
+    <main role="main" class="flex-shrink-0">
+      <div class="bg-body-tertiary py-5">
+        <div class="container">
+          {% include 'partials/messages.html' %}
+          {% block content %}{% endblock %}
+        </div>
+      </div>
+    </main>    
+    {% include 'partials/footer.html' %}
+  </body>
+</html>

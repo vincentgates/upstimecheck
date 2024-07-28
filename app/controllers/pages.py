@@ -5,9 +5,8 @@ blueprint = Blueprint('pages', __name__)
 
 # Dictionary mapping routes to their corresponding placeholder templates
 app_placeholder = {
-    "/": "home",
+    "/": "home", #also moving to it's own module
     "/features": "features",
-    "/cal": "calendar",
     "/faq": "faq",
 }
 

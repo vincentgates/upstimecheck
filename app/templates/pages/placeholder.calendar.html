@@ -1,8 +1,171 @@
-{% extends 'layouts/main.html' %}
+{% extends 'layouts/app.html' %}
 {% block title %}Calendar{% endblock %}
 {% block content %}
-<div class="page-header">
-  <h1>Calendar</h1>
-</div>
-<p class="lead">Calendar Place holder</p>
+<main role="main" class="flex-shrink-0">
+  <div class="bg-body-tertiary py-5">
+      <div class="container">
+
+          <div class="accordion accordion-flush mb-4" id="WeeklyView">
+              <div class="accordion-item">
+                  <h2 class="accordion-header">
+                  <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseOne" aria-expanded="false" aria-controls="flush-collapseOne">
+                      <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#e8eaed"><path d="m336-280 144-144 144 144 56-56-144-144 144-144-56-56-144 144-144-144-56 56 144 144-144 144 56 56ZM480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>
+                      Sun 07/15/2024
+                  </button>
+                  </h2>
+                  <div id="flush-collapseOne" class="accordion-collapse collapse" data-bs-parent="#WeeklyView">
+                  <div class="accordion-body"><h5 class="card-title">Punch Out Summary</h5>
+                      <p class="card-text text-danger">No Data Found</p>
+                      <div class="btn-group btn-group-sm justify-content-end" role="group" aria-label="Small button group">
+                          <button type="button" class="btn btn-outline-danger">View</button>
+                          <button type="button" class="btn btn-outline-danger">Edit</button>
+                      </div>                   
+                  </div>
+                  </div>
+              </div>
+
+              <div class="accordion-item">
+                  <h2 class="accordion-header">
+                  <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseTwo" aria-expanded="false" aria-controls="flush-collapseTwo">
+                      <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#e8eaed"><path d="m424-296 282-282-56-56-226 226-114-114-56 56 170 170Zm56 216q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>
+                      Mon 07/16/2024
+                  </button>
+                  </h2>
+                  <div id="flush-collapseTwo" class="accordion-collapse collapse" data-bs-parent="#WeeklyView">
+                      <div class="accordion-body"><h5 class="card-title">Punch Out Summary</h5>
+                          <p class="card-text">Sch Time: 04:30</p>
+                          <p class="card-text">
+                              Punched In: 04:27<br>
+                              Punched Out: 09:00
+                          </p>
+                          <div class="btn-group btn-group-sm justify-content-end" role="group" aria-label="Small button group">
+                              <button type="button" class="btn btn-outline-primary">View</button>
+                              <button type="button" class="btn btn-outline-primary">Edit</button>
+                          </div>                   
+                      </div>
+                  </div>
+              </div>
+              <div class="accordion-item">
+                  <h2 class="accordion-header">
+                  <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseThree" aria-expanded="false" aria-controls="flush-collapseThree">
+                      <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#e8eaed"><path d="m424-296 282-282-56-56-226 226-114-114-56 56 170 170Zm56 216q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>
+                      Tue 07/17/2024
+                  </button>
+                  </h2>
+                  <div id="flush-collapseThree" class="accordion-collapse collapse" data-bs-parent="#WeeklyView">
+                  <div class="accordion-body"><h5 class="card-title">Punch Out Summary</h5>
+                      <p class="card-text">Sch Time: 04:30</p>
+                      <p class="card-text">
+                          Punched In: 04:27<br>
+                          Punched Out: 09:00
+                      </p>
+                      <div class="btn-group btn-group-sm justify-content-end" role="group" aria-label="Small button group">
+                          <button type="button" class="btn btn-outline-primary">View</button>
+                          <button type="button" class="btn btn-outline-primary">Edit</button>
+                      </div>                   
+                  </div>
+                  </div>
+              </div>
+              <div class="accordion-item">
+                  <h2 class="accordion-header">
+                  <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseFour" aria-expanded="false" aria-controls="flush-collapseFour">
+                      <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#e8eaed"><path d="m424-296 282-282-56-56-226 226-114-114-56 56 170 170Zm56 216q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>
+                      Wed 07/18/2024
+                  </button>
+                  </h2>
+                  <div id="flush-collapseFour" class="accordion-collapse collapse" data-bs-parent="#WeeklyView">
+                  <div class="accordion-body"><h5 class="card-title">Punch Out Summary</h5>
+                      <p class="card-text">Sch Time: 04:30</p>
+                      <p class="card-text">
+                          Punched In: 04:27<br>
+                          Punched Out: 09:00
+                      </p>
+                      <div class="btn-group btn-group-sm justify-content-end" role="group" aria-label="Small button group">
+                          <button type="button" class="btn btn-outline-primary">View</button>
+                          <button type="button" class="btn btn-outline-primary">Edit</button>
+                      </div>                   
+                  </div>
+                  </div>
+              </div>
+              <div class="accordion-item">
+                  <h2 class="accordion-header">
+                  <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseFive" aria-expanded="false" aria-controls="flush-collapseFive">
+                      <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#e8eaed"><path d="m424-296 282-282-56-56-226 226-114-114-56 56 170 170Zm56 216q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>
+                      Thur 07/19/2024
+                  </button>
+                  </h2>
+                  <div id="flush-collapseFive" class="accordion-collapse collapse" data-bs-parent="#WeeklyView">
+                  <div class="accordion-body"><h5 class="card-title">Punch Out Summary</h5>
+                      <p class="card-text">Sch Time: 04:30</p>
+                      <p class="card-text">
+                          Punched In: 04:27<br>
+                          Punched Out: 09:00
+                      </p>
+                      <div class="btn-group btn-group-sm justify-content-end" role="group" aria-label="Small button group">
+                          <button type="button" class="btn btn-outline-primary">View</button>
+                          <button type="button" class="btn btn-outline-primary">Edit</button>
+                      </div>                   
+                  </div>
+                  </div>
+              </div>
+              <div class="accordion-item">
+                  <h2 class="accordion-header">
+                  <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseSix" aria-expanded="false" aria-controls="flush-collapseSix">
+                      <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#e8eaed"><path d="m424-296 282-282-56-56-226 226-114-114-56 56 170 170Zm56 216q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>
+                      Fri 07/20/2024
+                  </button>
+                  </h2>
+                  <div id="flush-collapseSix" class="accordion-collapse collapse" data-bs-parent="#WeeklyView">
+                  <div class="accordion-body"><h5 class="card-title">Punch Out Summary</h5>
+                      <p class="card-text">Sch Time: 04:30</p>
+                      <p class="card-text">
+                          Punched In: 04:27<br>
+                          Punched Out: 09:00
+                      </p>
+                      <div class="btn-group btn-group-sm justify-content-end" role="group" aria-label="Small button group">
+                          <button type="button" class="btn btn-outline-primary">View</button>
+                          <button type="button" class="btn btn-outline-primary">Edit</button>
+                      </div>                   
+                  </div>
+                  </div>
+              </div>
+              <div class="accordion-item">
+                  <h2 class="accordion-header">
+                  <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#flush-collapseSeven" aria-expanded="false" aria-controls="flush-collapseSeven">
+                      <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#e8eaed"><path d="m424-296 282-282-56-56-226 226-114-114-56 56 170 170Zm56 216q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>
+                      Sat 07/21/2024
+                  </button>
+                  </h2>
+                  <div id="flush-collapseSeven" class="accordion-collapse collapse" data-bs-parent="#WeeklyView">
+                  <div class="accordion-body"><h5 class="card-title">Punch Out Summary</h5>
+                      <p class="card-text">Sch Time: 04:30</p>
+                      <p class="card-text">
+                          Punched In: 04:27<br>
+                          Punched Out: 09:00
+                      </p>
+                      <div class="btn-group btn-group-sm justify-content-end" role="group" aria-label="Small button group">
+                          <button type="button" class="btn btn-outline-primary">View</button>
+                          <button type="button" class="btn btn-outline-primary">Edit</button>
+                      </div>                   
+                  </div>
+                  </div>
+              </div>
+          </div>
+
+          <div class="card text-centerx mb-3">
+              <div class="card-body">
+                  <h3 class="card-title">Weekly Summary</h3>
+                  <p class="card-text"></p>
+                  <p class="card-text lead">
+                      Captured Hours: 32:07<br>
+                      Reported Hours: 31:37
+                  </p>
+                  <a href="#" class="btn btn-primary btn-small align-right rounded-pill">Generate Grievance</a></div>
+              <div class="card-footer text-muted"><h4>Total Unpaid Hours: 00:30</h4></div>
+          </div>
+
+
+      </div>
+  </div>
+</main>
 {% endblock %}

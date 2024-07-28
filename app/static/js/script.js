@@ -1,3 +1,1 @@
-(function() {
-
-}).call(this);
+// Add custom JavaScript here

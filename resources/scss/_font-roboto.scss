@@ -1,0 +1,77 @@
+
+/**
+ * @file
+ * Main stylesheet file.
+ */
+
+// @font-face {
+//   font-family:'Roboto';
+//   src:url('./app/static/fonts/roboto/Roboto-Regular.eot?v=4.0.1');
+//   src:url('./app/static/fonts/roboto/Roboto-Regular.eot?#iefix&v=4.0.1') format('embedded-opentype'),
+//   url('./app/static/fonts/roboto/Roboto-Regular.woff?v=4.0.1') format('woff'),
+//   url('./app/static/fonts/roboto/Roboto-Regular.ttf?v=4.0.1') format('truetype'),
+//   url('./app/static/fonts/roboto/Roboto-Regular.svg?v=4.0.1#fontawesomeregular') format('svg');
+//   font-weight:normal;font-style:normal
+// }
+
+@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;1,100;1,300;1,400;1,500&display=swap');
+/*****************************************************************************
+ * Main elements
+ ****************************************************************************/
+ .roboto-thin {
+    font-family: "Roboto", sans-serif;
+    font-weight: 100;
+    font-style: normal;
+  }
+  
+  .roboto-light, * {
+    font-family: "Roboto", sans-serif;
+    font-weight: 300;
+    font-style: normal;
+  }
+  
+  .roboto-regular, h1, h2, h3 {
+    font-family: "Roboto", sans-serif;
+    font-weight: 400;
+    font-style: normal;
+  }
+  
+  .roboto-medium {
+    font-family: "Roboto", sans-serif;
+    font-weight: 500;
+    font-style: normal;
+  }
+  
+  .roboto-thin-italic {
+    font-family: "Roboto", sans-serif;
+    font-weight: 100;
+    font-style: italic;
+  }
+  
+  .roboto-light-italic {
+    font-family: "Roboto", sans-serif;
+    font-weight: 300;
+    font-style: italic;
+  }
+  
+  .roboto-regular-italic {
+    font-family: "Roboto", sans-serif;
+    font-weight: 400;
+    font-style: italic;
+  }
+  
+  .roboto-medium-italic {
+    font-family: "Roboto", sans-serif;
+    font-weight: 500;
+    font-style: italic;
+  }
+  
+
+
+/* Main elements end */
+
+/*****************************************************************************
+ * Various other styles
+ ****************************************************************************/
+
+/* Various other styles end */

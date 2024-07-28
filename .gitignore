@@ -2,4 +2,6 @@
 .DS_Store
 env
 venv
+**/.vscode/
+node_modules
 app/static/.webassets-cache/
