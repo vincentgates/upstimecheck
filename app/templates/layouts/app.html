@@ -3,7 +3,9 @@
 {% include 'partials/head.html' %}
   <body id="main" class="d-flex flex-column h-100">
     {% include 'partials/navbar.html' %}
+    {% block header %}
     {% include 'partials/header.html' %}
+    {% endblock %}
     <!-- Begin content -->
     <main role="main" class="flex-shrink-0">
       <div class="bg-body-tertiary py-5">
