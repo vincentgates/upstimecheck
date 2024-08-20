@@ -3,6 +3,7 @@ import logging
 from flask import Flask, request as req
 
 from app.controllers import pages
+from app.controllers.authentication import authentication
 from app.controllers.calendar import calendar
 
 
@@ -11,6 +12,7 @@ def create_app(config_filename):
     app.config.from_object(config_filename)
 
     app.register_blueprint(pages.blueprint)
+    app.register_blueprint(authentication.authentication_bp)
     app.register_blueprint(calendar.calendar_bp)
 
     app.logger.setLevel(logging.NOTSET)
