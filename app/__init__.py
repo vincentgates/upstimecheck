@@ -4,33 +4,34 @@ import logging
 from flask import Flask, request as req
 
 from app.controllers import pages
-from app.controllers.authentication import authentication
 from app.controllers.calendar import calendar
+from app.db import db
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 def create_app(config_filename=None):
-    app = Flask(__name__, instance_relative_config=True)
+    config_file_path = os.path.join(BASE_DIR, '..', 'config', f'{config_filename}.py')
+    database_path = os.path.join(BASE_DIR, '..', 'database.db')
+
+    app = Flask(__name__, instance_relative_config=False)
     app.config.from_mapping(
-        FLASK_APP='run.py',
-        SECRET_KEY = '1a3a5858d7695287ef65558467b24bf15cb19138c01f8d09',  # Replace with the generated key
-        # Database
-        DATABASE = os.path.join(os.getenv('INSTANCE_PATH', ''), '../database.db'),
-        SQLALCHEMY_DATABASE_URI = f'sqlite:///{os.path.join(BASE_DIR, '../database.db')}',
-        CSRF_ENABLED = True
+        FLASK_APP='app:create_app("development")',
+        SECRET_KEY='1a3a5858d7695287ef65558467b24bf15cb19138c01f8d09',
+        DATABASE=database_path,
+        SQLALCHEMY_DATABASE_URI=f'sqlite:///{database_path}',
+        CSRF_ENABLED=True
     )
 
-    if config_filename is None:
-        # python run.py
-        app.config.from_pyfile('../config/development.py', silent=True)
-    else:
-        # flask run
-        app.config.from_mapping(config_filename)
+    if os.path.exists(config_file_path):
+        app.config.from_pyfile(config_file_path, silent=True)
 
-    
+    db.init_app(app)
+
     app.register_blueprint(pages.blueprint)
-    app.register_blueprint(authentication.authentication_bp)
     app.register_blueprint(calendar.calendar_bp)
+
+    with app.app_context():
+        db.create_all()
 
     app.logger.setLevel(logging.NOTSET)
 

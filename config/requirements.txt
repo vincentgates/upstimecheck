@@ -1,13 +1,10 @@
 Flask
-Flask-Login
 Flask-SQLAlchemy
-Flask-Script
-Flask-Assets
-Flask-WTF
-Flask-User==1.0.2.2
 Flask-Migrate
+Flask-WTF
 Werkzeug
 Jinja2
+Click
 MarkupSafe
 itsdangerous
 SQLAlchemy

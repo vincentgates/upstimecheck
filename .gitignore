@@ -6,3 +6,4 @@ venv
 **/.vscode/
 node_modules
 app/static/.webassets-cache/
+database.db
