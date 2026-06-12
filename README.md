@@ -6,26 +6,43 @@ Personal tool for cross-checking UPS app clock-in/out times against the official
 
 ### 1. Install Tesseract OCR
 
-Tesseract is a system dependency — it can't be pip-installed. Install it once for your platform, then leave it on your PATH.
+Tesseract is a system binary — it can't be pip-installed. Do this once per machine.
 
-**Windows**
-Download the installer from [UB Mannheim builds](https://github.com/UB-Mannheim/tesseract/wiki).
-During install, check **"Add to PATH"**.
+---
+
+**Windows (development machine)**
+
+1. Go to **https://github.com/UB-Mannheim/tesseract/wiki** and download the latest
+   **64-bit Windows installer** (filename looks like `tesseract-ocr-w64-setup-*.exe`).
+2. Run the installer. **Accept the default install path:**
+   ```
+   C:\Program Files\Tesseract-OCR\
+   ```
+   The app hard-codes this path for Windows. If you install somewhere else, update
+   `pytesseract.pytesseract.tesseract_cmd` in `app/ocr.py` to match.
+3. The "Add to PATH" checkbox is optional — the app sets the path in code.
+   Checking it lets you run `tesseract --version` in a terminal to confirm the install.
+4. Verify the install worked by running the debug script (after Python env is set up):
+   ```bat
+   python ocr_debug.py
+   ```
+   You should see the EXIF date, the raw OCR text, and two parsed punch dicts.
+
+---
 
 **macOS**
 ```bash
 brew install tesseract
 ```
 
-**Linux (Debian/Ubuntu)**
+**Linux (Debian/Ubuntu / Heroku)**
 ```bash
 sudo apt install tesseract-ocr
 ```
+On Heroku, add `tesseract-ocr` to an `Aptfile` in the project root and use the
+`heroku-buildpack-apt` buildpack — no code change needed, Linux finds it on PATH.
 
-Verify it's on your PATH after installing:
-```bash
-tesseract --version
-```
+---
 
 ### 2. Set up the Python environment
 
@@ -100,7 +117,7 @@ Cross-checking works by pairing rows with the same `date` and comparing `source=
 - [x] Flask app boots, routes work
 - [x] `database.db` creates with correct schema on first run
 - [x] Weekly calendar view renders at `/cal` (accordion, prev/next week nav)
-- [x] OCR module scaffolded — `/upload` route, preprocessing pipeline, parser stub (regex TBD once screenshots available)
+- [x] OCR pipeline wired — EXIF date extraction, preprocessing, `Punched In/Out` regex parser, DB insert
 - [ ] Calendar view reads real data from DB (currently hardcoded placeholder)
 - [ ] Cross-check logic — flag mismatches between app and official punches
 

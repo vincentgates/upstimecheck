@@ -1,7 +1,27 @@
 # Project: UPS Time Reconciliation Tool
 
+## Deployment target — READ THIS FIRST
+
+**Production runs on Linux (Heroku or similar PaaS). Development runs on Windows.**
+This is a hard constraint that applies to every code change, forever.
+
+Rules that follow from this:
+- **Never hardcode Windows paths.** No `C:\...`, no `r'C:\Program Files\...'` anywhere in
+  application code. Use `platform.system()` guards or environment variables instead.
+- **No Windows-only binaries.** Any system dependency (e.g. Tesseract) must be installable
+  on Linux via `apt` / a Heroku buildpack. Document it in `Aptfile` or `Procfile` notes.
+- **Tesseract path** is set conditionally in `app/ocr.py` — Windows gets the hardcoded
+  installer path; Linux finds it on `PATH` automatically (no override needed).
+- **Secret key, DB URL, and any credentials** must come from environment variables before
+  any production push. The current hardcoded key in `app/__init__.py` is dev-only.
+- **SQLite is fine for now.** Heroku's ephemeral filesystem means the DB resets on dyno
+  restart — acceptable for Phase 1 testing. Phase 2 will need a persistent store
+  (PostgreSQL via `heroku-postgres` add-on, or an attached volume).
+
+When adding any new system-level dependency, ask: *does this work on a fresh Ubuntu dyno?*
+
 ## Status
-Phase 1 in progress. App boots, DB schema is live. OCR and real DB reads not yet wired.
+Phase 1 in progress. App boots, DB schema is live. OCR pipeline wired; Tesseract install pending.
 
 ## Stack
 - Python / Flask 3.x
