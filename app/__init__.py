@@ -18,7 +18,7 @@ def create_app(config_filename=None):
     app = Flask(__name__, instance_relative_config=False)
     app.config.from_mapping(
         FLASK_APP='app:create_app("development")',
-        SECRET_KEY='1a3a5858d7695287ef65558467b24bf15cb19138c01f8d09',
+        SECRET_KEY=os.environ.get('SECRET_KEY', 'dev-only-insecure-key'),
         DATABASE=database_path,
         SQLALCHEMY_DATABASE_URI=f'sqlite:///{database_path}',
         CSRF_ENABLED=True
