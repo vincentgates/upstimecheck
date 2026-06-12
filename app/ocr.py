@@ -10,24 +10,24 @@ from PIL import Image, ImageEnhance
 if platform.system() == 'Windows':
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
-# Allow up to 10 non-digit chars between label and time to absorb OCR noise
-# e.g. "Punched Out), 09:15" — the "), " is junk the camera-photo OCR introduces
-_PUNCH_RE = re.compile(r'Punched\s+(In|Out)[^\d]{0,10}(\d{1,2}:\d{2})', re.IGNORECASE)
+# \s* (not \s+) handles "Punchedout" with no space — OCR drop on photo-of-screen
+# [^\d]{0,10} absorbs junk between label and time e.g. "Punched Out), 09:15"
+_PUNCH_RE = re.compile(r'Punched\s*(In|Out)[^\d]{0,10}(\d{1,2}:\d{2})', re.IGNORECASE)
 
 _EXIF_DATE_TAGS = (36867, 36868, 306)  # DateTimeOriginal, DateTimeDigitized, DateTime
 _TARGET_WIDTH = 1600  # downsample to this before OCR — Tesseract chokes on 8K images
 
 
-def extract_punches(image_path, source):
+def extract_punches(image_path, source, fallback_date=None):
     """
     OCR a screenshot and return a list of punch dicts ready for DB insert.
 
     Each dict contains: date, time, type, raw_ocr_text, confidence.
     Caller is responsible for adding source and creating Punch objects.
-    Returns [] if EXIF date cannot be read — date from on-screen text is unreliable
-    (the date corner is often cropped out of frame).
+    fallback_date is used when EXIF is unavailable (e.g. screenshots with stripped metadata).
+    Returns [] if no date can be determined.
     """
-    punch_date = _exif_date(image_path)
+    punch_date = _exif_date(image_path) or fallback_date
     if punch_date is None:
         return []
 

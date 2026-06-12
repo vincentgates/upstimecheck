@@ -38,10 +38,19 @@ def upload():
             file.save(tmp.name)
             tmp_path = tmp.name
 
+        fallback_date = None
+        date_str = request.form.get('punch_date', '').strip()
+        if date_str:
+            try:
+                fallback_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                flash('Invalid date format.', 'danger')
+                return redirect(url_for('upload.upload'))
+
         try:
             image_filename = _save_display_copy(tmp_path, source, ext)
             saved_path = os.path.join(_UPLOAD_DIR, image_filename)
-            punches = extract_punches(saved_path, source)
+            punches = extract_punches(saved_path, source, fallback_date=fallback_date)
         except Exception as e:
             flash(f'OCR error: {e}', 'danger')
             return redirect(url_for('upload.upload'))
@@ -50,8 +59,8 @@ def upload():
 
         if not punches:
             flash(
-                'Screenshot processed but no punches were found. '
-                'The parser needs tuning — share the screenshot so the regex can be written.',
+                'No punches found. If this image has no photo metadata (e.g. a screenshot), '
+                'enter the punch date manually and try again.',
                 'warning'
             )
             return redirect(url_for('upload.upload'))

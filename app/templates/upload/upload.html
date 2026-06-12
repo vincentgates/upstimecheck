@@ -31,7 +31,19 @@
             <label for="screenshot" class="form-label fw-semibold">Screenshot file</label>
             <input class="form-control" type="file" id="screenshot" name="screenshot"
                    accept=".png,.jpg,.jpeg">
-            <div class="form-text">PNG or JPG. Crop to the punch list for best OCR accuracy.</div>
+            <div class="form-text">PNG or JPG. Phone photos include EXIF date automatically.</div>
+          </div>
+
+          <div class="mb-4">
+            <label for="punch_date" class="form-label fw-semibold">
+              Punch date
+              <span class="text-muted fw-normal">(only needed if date is missing from photo metadata)</span>
+            </label>
+            <input class="form-control" type="date" id="punch_date" name="punch_date">
+            <div class="form-text">
+              Leave blank for phone photos — date is read from EXIF automatically.
+              Required for screenshots or images without metadata.
+            </div>
           </div>
 
           <button type="submit" class="btn btn-primary">Extract &amp; Save</button>
