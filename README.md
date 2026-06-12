@@ -112,14 +112,30 @@ One table, `punches`, defined in `app/db.py`:
 
 Cross-checking works by pairing rows with the same `date` and comparing `source='app'` vs `source='official'`.
 
+## Why this tool exists
+
+A time discrepancy between the UPS app punch and the official system means missed pay.
+This tool detects those discrepancies and will auto-generate a **grievance form (PDF)**
+the user can file to recover the difference.
+
+**Upload workflow:** UPS operates Monday–Saturday. Upload both screenshot sources on Sunday
+after the full week is complete. Cross-check pairs same-date punches across both sources
+and flags any time differences.
+
+**OCR confidence score:** Every punch record stores a confidence score (0–100%) from
+Tesseract — how certain the engine was when reading the image. Photos of screens typically
+score 60–80%. A low score means extracted times may be wrong. Use the Edit function to
+correct them manually; the edit view shows the original image alongside editable fields.
+
 ## Current state (Phase 1, in progress)
 
 - [x] Flask app boots, routes work
 - [x] `database.db` creates with correct schema on first run
-- [x] Weekly calendar view renders at `/cal` (accordion, prev/next week nav)
-- [x] OCR pipeline wired — EXIF date extraction, preprocessing, `Punched In/Out` regex parser, DB insert
-- [ ] Calendar view reads real data from DB (currently hardcoded placeholder)
-- [ ] Cross-check logic — flag mismatches between app and official punches
+- [x] OCR pipeline — EXIF date, preprocessing, `Punched In/Out` parser, DB insert
+- [x] Weekly calendar — live DB data, accordion + View modals, confidence %
+- [ ] Cross-check logic — flag mismatches between `app` and `official` punches for same date
+- [ ] Grievance form PDF — auto-generate on discrepancy (planned: WeasyPrint)
+- [ ] Edit modal — original image + editable fields for low-confidence records
 
 ## Phase 2 (future)
 

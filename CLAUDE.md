@@ -21,13 +21,30 @@ Rules that follow from this:
 When adding any new system-level dependency, ask: *does this work on a fresh Ubuntu dyno?*
 
 ## Status
-Phase 1 in progress. App boots, DB schema is live. OCR pipeline wired; Tesseract install pending.
+Phase 1 in progress. OCR pipeline live, calendar reads DB. Cross-check logic next.
+
+## End goal — why this tool exists
+A time discrepancy between the UPS app punch and the official system = missed pay.
+The cross-check logic detects those discrepancies and the app will auto-generate a
+**grievance form (PDF)** the user can file to recover the difference.
+
+- PDF generation not yet implemented. Planned library: WeasyPrint (HTML → PDF).
+- The form will include: date, app time, official time, delta in minutes, employee name.
+- Trigger: "File Grievance" button on a discrepancy row. Download/print only — no auto-submit.
+
+## Upload workflow (UPS schedule)
+UPS operates Monday–Saturday. Sunday is the ideal upload day:
+- Upload **both** screenshot sources after the full Mon–Sat week is complete.
+- `source='app'`      → UPS handheld/terminal clock-in screenshots (taken at punch time).
+- `source='official'` → Punch Out Summary screen (the system being cross-referenced).
+- Cross-check pairs same-date punches across sources and flags time differences.
 
 ## Stack
 - Python / Flask 3.x
 - SQLite (`database.db`) via Flask-SQLAlchemy — auto-created on first run
-- OCR: pytesseract (not yet installed or wired — next Phase 1 task)
-- Frontend: Bootstrap 5 accordion, Jinja2 templates
+- OCR: pytesseract + Tesseract binary
+- PDF (planned): WeasyPrint — HTML/CSS → PDF, Linux-compatible, pip-installable
+- Frontend: Bootstrap 5 accordion + modals, Jinja2 templates, SASS via npm
 
 ## Phases
 **Phase 1 (current):** Single-user, no auth. Goal: OCR → DB → weekly view → cross-check.

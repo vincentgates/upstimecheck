@@ -39,8 +39,10 @@
               aria-expanded="false"
               aria-controls="{{ day.collapse_id }}">
 
-        {# Status badge #}
-        {% if day_punches %}
+        {# Status badge: red = discrepancy, green = clean, gray = no data #}
+        {% if discrepancies.get(day.date) %}
+          <span class="badge rounded-pill bg-danger me-3" title="Time discrepancy found">&#9888;</span>
+        {% elif day_punches %}
           <span class="badge rounded-pill bg-success me-3">&#10003;</span>
         {% else %}
           <span class="badge rounded-pill bg-light text-secondary border me-3">&ndash;</span>
@@ -207,10 +209,52 @@
 
       </div>
 
+      {# ── Discrepancy summary ──────────────────────────────────────── #}
+      {% set issues = discrepancies.get(day.date, []) %}
+      {% if issues %}
+      <div class="modal-footer d-block">
+        <div class="alert alert-danger mb-3 py-2">
+          <strong>&#9888; Time discrepancy found</strong>
+          <table class="table table-sm table-borderless mb-0 mt-2">
+            <thead>
+              <tr class="text-muted small">
+                <th>Punch</th><th>App</th><th>Official</th><th>Difference</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for issue in issues %}
+              <tr>
+                <td class="text-capitalize">{{ issue.type }}</td>
+                <td>{{ issue.app.strftime('%H:%M') if issue.app else '—' }}</td>
+                <td>{{ issue.official.strftime('%H:%M') if issue.official else '—' }}</td>
+                <td>
+                  {% if issue.delta_minutes is not none %}
+                    {{ issue.delta_minutes | abs }} min
+                    ({{ 'app ahead' if issue.delta_minutes > 0 else 'official ahead' }})
+                  {% else %}
+                    missing from one source
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="d-flex justify-content-between">
+          <button type="button" class="btn btn-secondary btn-sm"
+                  data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-danger btn-sm" disabled
+                  title="Grievance form PDF — coming soon">
+            &#128196; File Grievance
+          </button>
+        </div>
+      </div>
+      {% else %}
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary btn-sm"
                 data-bs-dismiss="modal">Close</button>
       </div>
+      {% endif %}
 
     </div>
   </div>
