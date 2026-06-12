@@ -5,6 +5,7 @@ from flask import Flask, request as req
 
 from app.controllers import pages
 from app.controllers.calendar import calendar
+from app.controllers.upload import upload_bp
 from app.db import db
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -29,6 +30,7 @@ def create_app(config_filename=None):
 
     app.register_blueprint(pages.blueprint)
     app.register_blueprint(calendar.calendar_bp)
+    app.register_blueprint(upload_bp)
 
     with app.app_context():
         db.create_all()

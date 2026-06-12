@@ -8,4 +8,6 @@ Click
 MarkupSafe
 itsdangerous
 SQLAlchemy
+pytesseract
+Pillow
 pytest-xdist

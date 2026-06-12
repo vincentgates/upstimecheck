@@ -4,17 +4,49 @@ Personal tool for cross-checking UPS app clock-in/out times against the official
 
 ## Setup
 
-Requires Python 3.x and Windows (uses `setup_env.bat`).
+### 1. Install Tesseract OCR
 
+Tesseract is a system dependency — it can't be pip-installed. Install it once for your platform, then leave it on your PATH.
+
+**Windows**
+Download the installer from [UB Mannheim builds](https://github.com/UB-Mannheim/tesseract/wiki).
+During install, check **"Add to PATH"**.
+
+**macOS**
+```bash
+brew install tesseract
+```
+
+**Linux (Debian/Ubuntu)**
+```bash
+sudo apt install tesseract-ocr
+```
+
+Verify it's on your PATH after installing:
+```bash
+tesseract --version
+```
+
+### 2. Set up the Python environment
+
+**Windows**
 ```bat
-# From the project root — delete .venv first if rebuilding from scratch
+# Delete .venv first if rebuilding from scratch
 setup_env.bat
+python run.py
+```
+
+**macOS / Linux**
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r config/requirements.txt
 python run.py
 ```
 
 Then open http://localhost:3000.
 
-`setup_env.bat` creates `.venv`, activates it, and installs `config/requirements.txt`. The SQLite database (`database.db`) is created automatically on first run — no migration step needed.
+The SQLite database (`database.db`) is created automatically on first run — no migration step needed.
 
 ## Project structure
 
@@ -23,13 +55,16 @@ upstimecheck/
 ├── app/
 │   ├── __init__.py          # App factory (create_app)
 │   ├── db.py                # SQLAlchemy instance + models
+│   ├── ocr.py               # Tesseract wrapper — screenshot → punch dicts
 │   ├── controllers/
 │   │   ├── pages.py         # Static placeholder routes (/, /features, /faq)
+│   │   ├── upload.py        # /upload — accepts screenshots, triggers OCR
 │   │   └── calendar/
 │   │       ├── calendar.py  # /cal weekly view route
-│   │       └── models.py    # Date helpers (no DB access yet)
+│   │       └── models.py    # Date helpers
 │   ├── templates/
 │   │   ├── layouts/app.html # Base layout
+│   │   ├── upload/          # Upload form
 │   │   ├── calendar/        # Weekly accordion view
 │   │   ├── pages/           # Placeholder pages
 │   │   └── partials/        # Navbar, head, footer, etc.
@@ -40,7 +75,7 @@ upstimecheck/
 ├── tests/
 ├── database.db              # SQLite — auto-created, not committed
 ├── run.py                   # Entry point: python run.py
-└── setup_env.bat            # Env bootstrap script
+└── setup_env.bat            # Windows env bootstrap
 ```
 
 ## Data schema
@@ -65,7 +100,7 @@ Cross-checking works by pairing rows with the same `date` and comparing `source=
 - [x] Flask app boots, routes work
 - [x] `database.db` creates with correct schema on first run
 - [x] Weekly calendar view renders at `/cal` (accordion, prev/next week nav)
-- [ ] OCR module — screenshot → `Punch` rows (pytesseract, not yet wired)
+- [x] OCR module scaffolded — `/upload` route, preprocessing pipeline, parser stub (regex TBD once screenshots available)
 - [ ] Calendar view reads real data from DB (currently hardcoded placeholder)
 - [ ] Cross-check logic — flag mismatches between app and official punches
 
