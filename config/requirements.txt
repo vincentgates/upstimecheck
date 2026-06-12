@@ -1,0 +1,13 @@
+Flask
+Flask-SQLAlchemy
+Flask-Migrate
+Flask-WTF
+Werkzeug
+Jinja2
+Click
+MarkupSafe
+itsdangerous
+SQLAlchemy
+pytesseract
+Pillow
+pytest-xdist

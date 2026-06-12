@@ -1,5 +1,266 @@
 {% extends 'layouts/app.html' %}
-{% block title %}About Page{% endblock %}
+{% block title %}Weekly Calendar{% endblock %}
+
+{% block header %}
+{% include 'calendar/header.html' %}
+{% endblock %}
+
 {% block content %}
-<h1>Hello from templates/calendar/cal-weekly.html</h1>
+
+{# ── Week navigation ─────────────────────────────────────────────────────── #}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <a href="{{ url_for('calendar.show_calendar', date=prev_week) }}"
+     class="btn btn-outline-secondary btn-sm">&larr; Prev Week</a>
+
+  <span class="text-muted small fw-semibold">
+    {{ week_start.strftime('%b') }} {{ week_start.day }}
+    &ndash;
+    {{ week_end.strftime('%b') }} {{ week_end.day }}, {{ week_end.year }}
+  </span>
+
+  <a href="{{ url_for('calendar.show_calendar', date=next_week) }}"
+     class="btn btn-outline-secondary btn-sm">Next Week &rarr;</a>
+</div>
+
+{# ── Weekly accordion ────────────────────────────────────────────────────── #}
+<div class="accordion accordion-flush mb-5" id="WeeklyView">
+  {% for day in days %}
+  {% set day_punches = punches_by_date.get(day.date, []) %}
+  {% set app_punches      = day_punches | selectattr('source', 'equalto', 'app')      | list %}
+  {% set official_punches = day_punches | selectattr('source', 'equalto', 'official') | list %}
+
+  <div class="accordion-item">
+
+    {# ── Accordion header ──────────────────────────────────────────────── #}
+    <h2 class="accordion-header">
+      <button class="accordion-button collapsed" type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#{{ day.collapse_id }}"
+              aria-expanded="false"
+              aria-controls="{{ day.collapse_id }}">
+
+        {# Status badge: red = discrepancy, green = clean, gray = no data #}
+        {% if discrepancies.get(day.date) %}
+          <span class="badge rounded-pill bg-danger me-3" title="Time discrepancy found">&#9888;</span>
+        {% elif day_punches %}
+          <span class="badge rounded-pill bg-success me-3">&#10003;</span>
+        {% else %}
+          <span class="badge rounded-pill bg-light text-secondary border me-3">&ndash;</span>
+        {% endif %}
+
+        <strong>{{ day.label }}</strong>
+        <span class="ms-2 text-muted small">
+          {{ day.date.strftime('%b') }} {{ day.date.day }}
+        </span>
+
+        {# Inline punch summary when data exists #}
+        {% if day_punches %}
+        <span class="ms-auto me-3 small text-muted d-none d-md-inline">
+          {% set in_punch  = day_punches | selectattr('type', 'equalto', 'in')  | first | default(none) %}
+          {% set out_punch = day_punches | selectattr('type', 'equalto', 'out') | first | default(none) %}
+          {% if in_punch  %}In {{ in_punch.time.strftime('%H:%M') }}{% endif %}
+          {% if in_punch and out_punch %}&nbsp;&bull;&nbsp;{% endif %}
+          {% if out_punch %}Out {{ out_punch.time.strftime('%H:%M') }}{% endif %}
+        </span>
+        {% endif %}
+
+      </button>
+    </h2>
+
+    {# ── Accordion body ────────────────────────────────────────────────── #}
+    <div id="{{ day.collapse_id }}" class="accordion-collapse collapse"
+         data-bs-parent="#WeeklyView">
+      <div class="accordion-body">
+
+        {% if not day_punches %}
+          <p class="text-muted mb-0">No punches recorded for this day.</p>
+
+        {% else %}
+          <div class="row g-3 mb-3">
+
+            {# App source card #}
+            {% if app_punches %}
+            <div class="col-sm-6">
+              <div class="card h-100">
+                <div class="card-body">
+                  <h6 class="card-subtitle mb-2 text-muted text-uppercase" style="font-size:.7rem;letter-spacing:.05em;">UPS App</h6>
+                  {% for punch in app_punches | sort(attribute='time') %}
+                  <div class="d-flex justify-content-between py-1 border-bottom">
+                    <span class="text-capitalize text-muted small">{{ punch.type }}</span>
+                    <strong>{{ punch.time.strftime('%H:%M') }}</strong>
+                  </div>
+                  {% endfor %}
+                  <p class="mt-2 mb-0 text-muted" style="font-size:.75rem;">
+                    Confidence {{ (app_punches[0].confidence * 100) | round(1) }}%
+                  </p>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+            {# Official source card #}
+            {% if official_punches %}
+            <div class="col-sm-6">
+              <div class="card h-100">
+                <div class="card-body">
+                  <h6 class="card-subtitle mb-2 text-muted text-uppercase" style="font-size:.7rem;letter-spacing:.05em;">Official System</h6>
+                  {% for punch in official_punches | sort(attribute='time') %}
+                  <div class="d-flex justify-content-between py-1 border-bottom">
+                    <span class="text-capitalize text-muted small">{{ punch.type }}</span>
+                    <strong>{{ punch.time.strftime('%H:%M') }}</strong>
+                  </div>
+                  {% endfor %}
+                  <p class="mt-2 mb-0 text-muted" style="font-size:.75rem;">
+                    Confidence {{ (official_punches[0].confidence * 100) | round(1) }}%
+                  </p>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+          </div>{# /row #}
+
+          <div class="btn-group btn-group-sm" role="group">
+            <button type="button" class="btn btn-outline-primary"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modal-{{ day.date_str }}">
+              View
+            </button>
+            <button type="button" class="btn btn-outline-secondary" disabled
+                    title="Edit coming in a future update">
+              Edit
+            </button>
+          </div>
+
+        {% endif %}
+      </div>
+    </div>
+
+  </div>{# /accordion-item #}
+  {% endfor %}
+</div>{# /accordion #}
+
+
+{# ── Modals (one pre-rendered per day that has punches) ──────────────────── #}
+{% for day in days %}
+{% set day_punches = punches_by_date.get(day.date, []) %}
+{% if day_punches %}
+{% set app_punches      = day_punches | selectattr('source', 'equalto', 'app')      | list %}
+{% set official_punches = day_punches | selectattr('source', 'equalto', 'official') | list %}
+
+<div class="modal fade" id="modal-{{ day.date_str }}" tabindex="-1"
+     aria-labelledby="modal-label-{{ day.date_str }}" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title" id="modal-label-{{ day.date_str }}">
+          {{ day.label }},
+          {{ day.date.strftime('%B') }} {{ day.date.day }}, {{ day.date.year }}
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+
+        {% if app_punches %}
+        <h6 class="text-muted text-uppercase mb-2" style="font-size:.75rem;letter-spacing:.06em;">UPS App</h6>
+        <table class="table table-sm mb-4">
+          <thead class="table-light">
+            <tr>
+              <th>Type</th>
+              <th>Time</th>
+              <th class="text-end">Confidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for punch in app_punches | sort(attribute='time') %}
+            <tr>
+              <td class="text-capitalize">{{ punch.type }}</td>
+              <td><strong>{{ punch.time.strftime('%H:%M') }}</strong></td>
+              <td class="text-end text-muted">{{ (punch.confidence * 100) | round(1) }}%</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+
+        {% if official_punches %}
+        <h6 class="text-muted text-uppercase mb-2" style="font-size:.75rem;letter-spacing:.06em;">Official System</h6>
+        <table class="table table-sm mb-2">
+          <thead class="table-light">
+            <tr>
+              <th>Type</th>
+              <th>Time</th>
+              <th class="text-end">Confidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for punch in official_punches | sort(attribute='time') %}
+            <tr>
+              <td class="text-capitalize">{{ punch.type }}</td>
+              <td><strong>{{ punch.time.strftime('%H:%M') }}</strong></td>
+              <td class="text-end text-muted">{{ (punch.confidence * 100) | round(1) }}%</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+
+      </div>
+
+      {# ── Discrepancy summary ──────────────────────────────────────── #}
+      {% set issues = discrepancies.get(day.date, []) %}
+      {% if issues %}
+      <div class="modal-footer d-block">
+        <div class="alert alert-danger mb-3 py-2">
+          <strong>&#9888; Time discrepancy found</strong>
+          <table class="table table-sm table-borderless mb-0 mt-2">
+            <thead>
+              <tr class="text-muted small">
+                <th>Punch</th><th>App</th><th>Official</th><th>Difference</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for issue in issues %}
+              <tr>
+                <td class="text-capitalize">{{ issue.type }}</td>
+                <td>{{ issue.app.strftime('%H:%M') if issue.app else '—' }}</td>
+                <td>{{ issue.official.strftime('%H:%M') if issue.official else '—' }}</td>
+                <td>
+                  {% if issue.delta_minutes is not none %}
+                    {{ issue.delta_minutes | abs }} min
+                    ({{ 'app ahead' if issue.delta_minutes > 0 else 'official ahead' }})
+                  {% else %}
+                    missing from one source
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="d-flex justify-content-between">
+          <button type="button" class="btn btn-secondary btn-sm"
+                  data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-danger btn-sm" disabled
+                  title="Grievance form PDF — coming soon">
+            &#128196; File Grievance
+          </button>
+        </div>
+      </div>
+      {% else %}
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm"
+                data-bs-dismiss="modal">Close</button>
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endfor %}
+{# ── End modals ──────────────────────────────────────────────────────────── #}
+
 {% endblock %}

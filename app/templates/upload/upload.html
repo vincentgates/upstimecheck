@@ -1,0 +1,44 @@
+{% extends 'layouts/app.html' %}
+{% block title %}Upload Screenshot{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header"><strong>Upload Punch Screenshot</strong></div>
+      <div class="card-body">
+        <p class="text-muted mb-4">
+          Take a screenshot from either the UPS app or the official time system,
+          then upload it here. The OCR engine will extract the punch times and
+          save them for weekly comparison.
+        </p>
+        <form method="POST" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Screenshot source</label>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="source" id="sourceApp" value="app" checked>
+              <label class="form-check-label" for="sourceApp">UPS App (clock-in/out)</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="source" id="sourceOfficial" value="official">
+              <label class="form-check-label" for="sourceOfficial">Official time system</label>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label for="screenshot" class="form-label fw-semibold">Screenshot file</label>
+            <input class="form-control" type="file" id="screenshot" name="screenshot"
+                   accept=".png,.jpg,.jpeg">
+            <div class="form-text">PNG or JPG. Crop to the punch list for best OCR accuracy.</div>
+          </div>
+
+          <button type="submit" class="btn btn-primary">Extract &amp; Save</button>
+          <a href="{{ url_for('calendar.show_calendar') }}" class="btn btn-outline-secondary ms-2">Cancel</a>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
