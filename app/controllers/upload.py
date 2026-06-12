@@ -6,7 +6,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from PIL import Image
 
 from app.db import db, Punch
-from app.ocr import extract_punches
+from app.ocr import extract_punches, _exif_date
 
 upload_bp = Blueprint('upload', __name__)
 
@@ -38,7 +38,11 @@ def upload():
             file.save(tmp.name)
             tmp_path = tmp.name
 
-        fallback_date = None
+        # Read EXIF from the original file before Pillow strips it on resave
+        exif_date = _exif_date(tmp_path)
+
+        # Manual date from form overrides EXIF; EXIF overrides nothing being set
+        fallback_date = exif_date
         date_str = request.form.get('punch_date', '').strip()
         if date_str:
             try:
