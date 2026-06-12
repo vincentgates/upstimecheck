@@ -6,32 +6,217 @@
 {% endblock %}
 
 {% block content %}
-<h1>Week Ending: {{ formatted_week_end_date }}</h1>
-<div class="accordion accordion-flush mb-4" id="WeeklyView">
-  {% for day in week_dates %}
+
+{# ── Week navigation ─────────────────────────────────────────────────────── #}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <a href="{{ url_for('calendar.show_calendar', date=prev_week) }}"
+     class="btn btn-outline-secondary btn-sm">&larr; Prev Week</a>
+
+  <span class="text-muted small fw-semibold">
+    {{ week_start.strftime('%b') }} {{ week_start.day }}
+    &ndash;
+    {{ week_end.strftime('%b') }} {{ week_end.day }}, {{ week_end.year }}
+  </span>
+
+  <a href="{{ url_for('calendar.show_calendar', date=next_week) }}"
+     class="btn btn-outline-secondary btn-sm">Next Week &rarr;</a>
+</div>
+
+{# ── Weekly accordion ────────────────────────────────────────────────────── #}
+<div class="accordion accordion-flush mb-5" id="WeeklyView">
+  {% for day in days %}
+  {% set day_punches = punches_by_date.get(day.date, []) %}
+  {% set app_punches      = day_punches | selectattr('source', 'equalto', 'app')      | list %}
+  {% set official_punches = day_punches | selectattr('source', 'equalto', 'official') | list %}
+
   <div class="accordion-item">
+
+    {# ── Accordion header ──────────────────────────────────────────────── #}
     <h2 class="accordion-header">
-    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#{{ day_ids[day.split()[0]] }}" aria-expanded="false" aria-controls="{{ day_ids[day.split()[0]] }}">
-        <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#e8eaed"><path d="m424-296 282-282-56-56-226 226-114-114-56 56 170 170Zm56 216q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>
-        {{ day }}
-    </button>
+      <button class="accordion-button collapsed" type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#{{ day.collapse_id }}"
+              aria-expanded="false"
+              aria-controls="{{ day.collapse_id }}">
+
+        {# Status badge #}
+        {% if day_punches %}
+          <span class="badge rounded-pill bg-success me-3">&#10003;</span>
+        {% else %}
+          <span class="badge rounded-pill bg-light text-secondary border me-3">&ndash;</span>
+        {% endif %}
+
+        <strong>{{ day.label }}</strong>
+        <span class="ms-2 text-muted small">
+          {{ day.date.strftime('%b') }} {{ day.date.day }}
+        </span>
+
+        {# Inline punch summary when data exists #}
+        {% if day_punches %}
+        <span class="ms-auto me-3 small text-muted d-none d-md-inline">
+          {% set in_punch  = day_punches | selectattr('type', 'equalto', 'in')  | first | default(none) %}
+          {% set out_punch = day_punches | selectattr('type', 'equalto', 'out') | first | default(none) %}
+          {% if in_punch  %}In {{ in_punch.time.strftime('%H:%M') }}{% endif %}
+          {% if in_punch and out_punch %}&nbsp;&bull;&nbsp;{% endif %}
+          {% if out_punch %}Out {{ out_punch.time.strftime('%H:%M') }}{% endif %}
+        </span>
+        {% endif %}
+
+      </button>
     </h2>
-    <div id="{{ day_ids[day.split()[0]] }}" class="accordion-collapse collapse" data-bs-parent="#WeeklyView">
-        <div class="accordion-body"><h5 class="card-title">Punch Out Summary</h5>
-            <p class="card-text">Sch Time: 04:30</p>
-            <p class="card-text">
-                Punched In: 04:27<br>
-                Punched Out: 09:00
-            </p>
-            <div class="btn-group btn-group-sm justify-content-end" role="group" aria-label="Small button group">
-                <button type="button" class="btn btn-outline-primary">View</button>
-                <button type="button" class="btn btn-outline-primary">Edit</button>
-            </div>                   
-        </div>
+
+    {# ── Accordion body ────────────────────────────────────────────────── #}
+    <div id="{{ day.collapse_id }}" class="accordion-collapse collapse"
+         data-bs-parent="#WeeklyView">
+      <div class="accordion-body">
+
+        {% if not day_punches %}
+          <p class="text-muted mb-0">No punches recorded for this day.</p>
+
+        {% else %}
+          <div class="row g-3 mb-3">
+
+            {# App source card #}
+            {% if app_punches %}
+            <div class="col-sm-6">
+              <div class="card h-100">
+                <div class="card-body">
+                  <h6 class="card-subtitle mb-2 text-muted text-uppercase" style="font-size:.7rem;letter-spacing:.05em;">UPS App</h6>
+                  {% for punch in app_punches | sort(attribute='time') %}
+                  <div class="d-flex justify-content-between py-1 border-bottom">
+                    <span class="text-capitalize text-muted small">{{ punch.type }}</span>
+                    <strong>{{ punch.time.strftime('%H:%M') }}</strong>
+                  </div>
+                  {% endfor %}
+                  <p class="mt-2 mb-0 text-muted" style="font-size:.75rem;">
+                    Confidence {{ (app_punches[0].confidence * 100) | round(1) }}%
+                  </p>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+            {# Official source card #}
+            {% if official_punches %}
+            <div class="col-sm-6">
+              <div class="card h-100">
+                <div class="card-body">
+                  <h6 class="card-subtitle mb-2 text-muted text-uppercase" style="font-size:.7rem;letter-spacing:.05em;">Official System</h6>
+                  {% for punch in official_punches | sort(attribute='time') %}
+                  <div class="d-flex justify-content-between py-1 border-bottom">
+                    <span class="text-capitalize text-muted small">{{ punch.type }}</span>
+                    <strong>{{ punch.time.strftime('%H:%M') }}</strong>
+                  </div>
+                  {% endfor %}
+                  <p class="mt-2 mb-0 text-muted" style="font-size:.75rem;">
+                    Confidence {{ (official_punches[0].confidence * 100) | round(1) }}%
+                  </p>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+          </div>{# /row #}
+
+          <div class="btn-group btn-group-sm" role="group">
+            <button type="button" class="btn btn-outline-primary"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modal-{{ day.date_str }}">
+              View
+            </button>
+            <button type="button" class="btn btn-outline-secondary" disabled
+                    title="Edit coming in a future update">
+              Edit
+            </button>
+          </div>
+
+        {% endif %}
+      </div>
+    </div>
+
+  </div>{# /accordion-item #}
+  {% endfor %}
+</div>{# /accordion #}
+
+
+{# ── Modals (one pre-rendered per day that has punches) ──────────────────── #}
+{% for day in days %}
+{% set day_punches = punches_by_date.get(day.date, []) %}
+{% if day_punches %}
+{% set app_punches      = day_punches | selectattr('source', 'equalto', 'app')      | list %}
+{% set official_punches = day_punches | selectattr('source', 'equalto', 'official') | list %}
+
+<div class="modal fade" id="modal-{{ day.date_str }}" tabindex="-1"
+     aria-labelledby="modal-label-{{ day.date_str }}" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title" id="modal-label-{{ day.date_str }}">
+          {{ day.label }},
+          {{ day.date.strftime('%B') }} {{ day.date.day }}, {{ day.date.year }}
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+
+        {% if app_punches %}
+        <h6 class="text-muted text-uppercase mb-2" style="font-size:.75rem;letter-spacing:.06em;">UPS App</h6>
+        <table class="table table-sm mb-4">
+          <thead class="table-light">
+            <tr>
+              <th>Type</th>
+              <th>Time</th>
+              <th class="text-end">Confidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for punch in app_punches | sort(attribute='time') %}
+            <tr>
+              <td class="text-capitalize">{{ punch.type }}</td>
+              <td><strong>{{ punch.time.strftime('%H:%M') }}</strong></td>
+              <td class="text-end text-muted">{{ (punch.confidence * 100) | round(1) }}%</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+
+        {% if official_punches %}
+        <h6 class="text-muted text-uppercase mb-2" style="font-size:.75rem;letter-spacing:.06em;">Official System</h6>
+        <table class="table table-sm mb-2">
+          <thead class="table-light">
+            <tr>
+              <th>Type</th>
+              <th>Time</th>
+              <th class="text-end">Confidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for punch in official_punches | sort(attribute='time') %}
+            <tr>
+              <td class="text-capitalize">{{ punch.type }}</td>
+              <td><strong>{{ punch.time.strftime('%H:%M') }}</strong></td>
+              <td class="text-end text-muted">{{ (punch.confidence * 100) | round(1) }}%</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm"
+                data-bs-dismiss="modal">Close</button>
+      </div>
+
     </div>
   </div>
-  {% endfor %}
 </div>
-<a href="{{ url_for('calendar.show_calendar', date=(datetime.strptime(week_end_date, '%Y-%m-%d') - timedelta(days=7)).strftime('%Y-%m-%d')) }}">Previous Week</a>
-<a href="{{ url_for('calendar.show_calendar', date=(datetime.strptime(week_end_date, '%Y-%m-%d') + timedelta(days=7)).strftime('%Y-%m-%d')) }}">Next Week</a>
+{% endif %}
+{% endfor %}
+{# ── End modals ──────────────────────────────────────────────────────────── #}
+
 {% endblock %}

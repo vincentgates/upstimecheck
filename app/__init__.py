@@ -2,6 +2,7 @@ import os
 import logging
 
 from flask import Flask, request as req
+from flask_wtf.csrf import CSRFProtect
 
 from app.controllers import pages
 from app.controllers.calendar import calendar
@@ -27,6 +28,7 @@ def create_app(config_filename=None):
         app.config.from_pyfile(config_file_path, silent=True)
 
     db.init_app(app)
+    CSRFProtect(app)
 
     app.register_blueprint(pages.blueprint)
     app.register_blueprint(calendar.calendar_bp)
