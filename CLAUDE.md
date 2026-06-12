@@ -11,7 +11,7 @@ Phase 1 in progress. App boots, DB schema is live. OCR and real DB reads not yet
 
 ## Phases
 **Phase 1 (current):** Single-user, no auth. Goal: OCR → DB → weekly view → cross-check.
-**Phase 2 (later):** Multi-user accounts, encrypted credentials, `user_id` on punches.
+**Phase 2 (later):** Multi-user accounts, encrypted credentials, user-scoped uploads.
 
 Do not add auth or user tables until Phase 1 is stable.
 
@@ -27,6 +27,45 @@ punches: id, date, time, type ('in'|'out'), source ('app'|'official'),
 ```
 
 When Phase 2 arrives, add `user_id` FK — don't restructure the rest of the table.
+
+## Phase 2 architecture notes
+
+**This app is essentially an image gallery with OCR metadata.** Keep that mental model —
+it clarifies every design decision below.
+
+### Upload storage
+Store image files on disk, never in the DB. Path: `uploads/<user_id>/<filename>`.
+Downsample with Pillow before saving — phone screenshots are 3–5 MB, OCR doesn't
+need full resolution. Discard the original after downsampling.
+
+### Two-layer data model
+Upload records and punch records are separate concerns linked by a FK:
+
+```
+users:   id, email, password_hash, created_at
+
+uploads: id, user_id (FK), filepath, source ('app'|'official'),
+         uploaded_at, ocr_json (TEXT)
+
+punches: id, upload_id (FK), user_id (FK), date, time,
+         type ('in'|'out'), source, confidence, created_at
+```
+
+- `uploads.ocr_json` — raw Tesseract key-value output stored as a JSON string.
+  Debug artifact only; the app never queries inside it. SQLite handles JSON fine
+  with `json_extract()` if needed later.
+- `punches` rows are derived from an upload. One upload → many punches.
+- Both tables carry `user_id` so punches can be queried without joining uploads.
+
+### Why SQLite is still the right call
+SQLite is not a heavy relational system — it's a single file with SQL and built-in
+JSON support. It's the right fit for this workload. No need to switch engines.
+If it ever outgrows SQLite, Flask-SQLAlchemy makes migrating to PostgreSQL
+straightforward with minimal code changes.
+
+### File serving
+Serve uploaded images through a Flask route (`/uploads/<user_id>/<filename>`) so
+files stay outside the `static/` folder and access can be gated per-user later.
 
 ## Conventions
 
