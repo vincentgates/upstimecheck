@@ -1,12 +1,18 @@
 import os
 import tempfile
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from datetime import datetime
+
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_from_directory
+from PIL import Image
+
 from app.db import db, Punch
 from app.ocr import extract_punches
 
 upload_bp = Blueprint('upload', __name__)
 
 _ALLOWED_EXTENSIONS = {'.png', '.jpg', '.jpeg'}
+_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'uploads', 'processed')
+_DISPLAY_WIDTH = 1600  # max width for saved display copy
 
 
 @upload_bp.route('/upload', methods=['GET', 'POST'])
@@ -33,7 +39,9 @@ def upload():
             tmp_path = tmp.name
 
         try:
-            punches = extract_punches(tmp_path, source)
+            image_filename = _save_display_copy(tmp_path, source, ext)
+            saved_path = os.path.join(_UPLOAD_DIR, image_filename)
+            punches = extract_punches(saved_path, source)
         except Exception as e:
             flash(f'OCR error: {e}', 'danger')
             return redirect(url_for('upload.upload'))
@@ -49,10 +57,31 @@ def upload():
             return redirect(url_for('upload.upload'))
 
         for data in punches:
-            db.session.add(Punch(source=source, **data))
+            db.session.add(Punch(source=source, image_path=image_filename, **data))
         db.session.commit()
 
         flash(f'Saved {len(punches)} punch(es) from {source} screenshot.', 'success')
         return redirect(url_for('calendar.show_calendar'))
 
     return render_template('upload/upload.html')
+
+
+@upload_bp.route('/uploads/processed/<filename>')
+def serve_upload(filename):
+    """Serve saved punch screenshots outside of static/ for future access control."""
+    return send_from_directory(os.path.abspath(_UPLOAD_DIR), filename)
+
+
+def _save_display_copy(tmp_path, source, ext):
+    """Downsample to display width, save color copy, return filename."""
+    os.makedirs(_UPLOAD_DIR, exist_ok=True)
+    img = Image.open(tmp_path)
+    if img.width > _DISPLAY_WIDTH:
+        scale = _DISPLAY_WIDTH / img.width
+        img = img.resize((int(img.width * scale), int(img.height * scale)), Image.LANCZOS)
+    # Convert RGBA/P modes to RGB so JPEG save always works
+    if img.mode not in ('RGB', 'L'):
+        img = img.convert('RGB')
+    filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{source}{ext}"
+    img.save(os.path.join(_UPLOAD_DIR, filename), quality=85)
+    return filename

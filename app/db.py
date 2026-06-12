@@ -14,6 +14,7 @@ class Punch(db.Model):
     source = db.Column(db.String(10), nullable=False) # 'app' or 'official'
     raw_ocr_text = db.Column(db.Text)
     confidence = db.Column(db.Float)
+    image_path = db.Column(db.String(255))  # filename only, served from uploads/processed/
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __repr__(self):

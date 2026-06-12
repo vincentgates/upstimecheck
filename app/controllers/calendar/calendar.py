@@ -1,9 +1,9 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, request, redirect, url_for, flash
 
-from app.db import Punch
+from app.db import db, Punch
 from .models import get_week_days, check_discrepancies
 
 calendar_bp = Blueprint('calendar', __name__)
@@ -49,3 +49,21 @@ def show_calendar(date=None):
         prev_week=(week_end - timedelta(days=7)).strftime('%Y-%m-%d'),
         next_week=(week_end + timedelta(days=7)).strftime('%Y-%m-%d'),
     )
+
+
+@calendar_bp.route('/cal/<date>/edit', methods=['POST'])
+def edit_punches(date):
+    punch_ids = request.form.getlist('punch_id')
+    for pid in punch_ids:
+        time_str = request.form.get(f'time_{pid}', '').strip()
+        if not time_str:
+            continue
+        punch = Punch.query.get(int(pid))
+        if punch:
+            try:
+                punch.time = datetime.strptime(time_str, '%H:%M').time()
+            except ValueError:
+                flash(f'Invalid time value "{time_str}" — skipped.', 'warning')
+    db.session.commit()
+    flash('Punches updated.', 'success')
+    return redirect(url_for('calendar.show_calendar', date=date))
