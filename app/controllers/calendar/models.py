@@ -72,6 +72,59 @@ def check_discrepancies(punches_by_date):
     return result
 
 
+def get_daily_summaries(punches_by_date):
+    """
+    Per-day summary of scheduled time, OCR-scraped daily total, and our own
+    calculated total (punch_out - punch_in).
+
+    Returns a dict keyed by date:
+        {
+            'scheduled_time':      time | None,
+            'ocr_total_minutes':   int | None,   # what the terminal screen says
+            'calc_total_minutes':  int | None,   # our calculation
+            'total_mismatch':      bool,          # True when both exist and differ
+        }
+
+    calc_total_minutes uses the official source punches (the authoritative record).
+    If the worker punched in before scheduled time, the effective start is the
+    scheduled time (company doesn't pay before the shift starts). This is noted as
+    an early punch — see README for the planned early-punch proof feature.
+    """
+    result = {}
+
+    for date, punches in punches_by_date.items():
+        # Prefer official source for calculated total; fall back to app
+        official_punches = [p for p in punches if p.source == 'official']
+        reference = official_punches if official_punches else punches
+
+        scheduled = next((p.scheduled_time for p in punches if p.scheduled_time), None)
+        ocr_total = next((p.daily_total_minutes for p in punches if p.daily_total_minutes is not None), None)
+
+        ref_in  = next((p for p in reference if p.type == 'in'),  None)
+        ref_out = next((p for p in reference if p.type == 'out'), None)
+
+        calc_total = None
+        if ref_in and ref_out:
+            # If punch_in is before scheduled, company counts from scheduled — not from actual punch
+            effective_in = ref_in.time
+            if scheduled and effective_in < scheduled:
+                effective_in = scheduled
+            calc_total = _delta_minutes(ref_out.time, effective_in)
+
+        result[date] = {
+            'scheduled_time':     scheduled,
+            'ocr_total_minutes':  ocr_total,
+            'calc_total_minutes': calc_total,
+            'total_mismatch':     (
+                ocr_total is not None
+                and calc_total is not None
+                and ocr_total != calc_total
+            ),
+        }
+
+    return result
+
+
 def _delta_minutes(t1, t2):
     """Signed difference in whole minutes: t1 − t2."""
     return (t1.hour * 60 + t1.minute) - (t2.hour * 60 + t2.minute)

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from app.db import db, Punch
-from .models import get_week_days, check_discrepancies
+from .models import get_week_days, check_discrepancies, get_daily_summaries
 
 calendar_bp = Blueprint('calendar', __name__)
 
@@ -36,13 +36,15 @@ def show_calendar(date=None):
     for p in punches:
         punches_by_date[p.date].append(p)
 
-    discrepancies = check_discrepancies(punches_by_date)
+    discrepancies   = check_discrepancies(punches_by_date)
+    daily_summaries = get_daily_summaries(punches_by_date)
 
     return render_template(
         'calendar/cal-weekly.html',
         days=days,
         punches_by_date=punches_by_date,
         discrepancies=discrepancies,
+        daily_summaries=daily_summaries,
         week_start=week_start,
         week_end=week_end,
         formatted_week_end=week_end.strftime('%m/%d/%Y'),

@@ -12,7 +12,11 @@ if platform.system() == 'Windows':
 
 # \s* (not \s+) handles "Punchedout" with no space — OCR drop on photo-of-screen
 # [^\d]{0,10} absorbs junk between label and time e.g. "Punched Out), 09:15"
-_PUNCH_RE = re.compile(r'Punched\s*(In|Out)[^\d]{0,10}(\d{1,2}:\d{2})', re.IGNORECASE)
+_PUNCH_RE      = re.compile(r'Punched\s*(In|Out)[^\d]{0,10}(\d{1,2}:\d{2})', re.IGNORECASE)
+# "Sched[uled] 03:45" — company-confirmed shift start printed on terminal screen
+_SCHED_RE      = re.compile(r'Sched(?:uled)?[^\d]{0,15}(\d{1,2}:\d{2})', re.IGNORECASE)
+# "Daily Total 5:30" / "Total 05:30" — total hours:minutes shown by the terminal
+_DAILY_TOTAL_RE = re.compile(r'(?:Daily\s+)?Total[^\d]{0,20}(\d+):(\d{2})', re.IGNORECASE)
 
 _EXIF_DATE_TAGS = (36867, 36868, 306)  # DateTimeOriginal, DateTimeDigitized, DateTime
 _TARGET_WIDTH = 1600  # downsample to this before OCR — Tesseract chokes on 8K images
@@ -77,20 +81,42 @@ def _parse(raw_text, punch_date, confidence):
     Parse raw OCR text from a UPS "Punch Out Summary" screen into punch dicts.
 
     Expected layout (official terminal):
-        Punched In   03:54
-        Punched Out  09:15
+        Punched In      03:54
+        Punched Out     09:15
+        Scheduled       03:45
+        Daily Total     5:30
     Times are 24-hour with no AM/PM suffix.
     Date comes from EXIF, not from on-screen text.
+    scheduled_time and daily_total_minutes may be None if not visible in the image.
     """
+    scheduled_time = _parse_scheduled(raw_text)
+    daily_total_minutes = _parse_daily_total(raw_text)
+
     punches = []
     for match in _PUNCH_RE.finditer(raw_text):
         direction, time_str = match.groups()
         punch_time = datetime.strptime(time_str, '%H:%M').time()
         punches.append({
-            'date': punch_date,
-            'time': punch_time,
-            'type': direction.lower(),
-            'raw_ocr_text': raw_text,
-            'confidence': confidence,
+            'date':                punch_date,
+            'time':                punch_time,
+            'type':                direction.lower(),
+            'raw_ocr_text':        raw_text,
+            'confidence':          confidence,
+            'scheduled_time':      scheduled_time,
+            'daily_total_minutes': daily_total_minutes,
         })
     return punches
+
+
+def _parse_scheduled(raw_text):
+    m = _SCHED_RE.search(raw_text)
+    if m:
+        return datetime.strptime(m.group(1), '%H:%M').time()
+    return None
+
+
+def _parse_daily_total(raw_text):
+    m = _DAILY_TOTAL_RE.search(raw_text)
+    if m:
+        return int(m.group(1)) * 60 + int(m.group(2))
+    return None

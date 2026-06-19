@@ -108,9 +108,20 @@ One table, `punches`, defined in `app/db.py`:
 | `source` | VARCHAR(10) | `'app'` or `'official'` |
 | `raw_ocr_text` | TEXT | Raw OCR output for debugging |
 | `confidence` | FLOAT | OCR confidence score (0–1) |
+| `image_path` | VARCHAR(255) | Saved screenshot filename (served from `uploads/processed/`) |
+| `scheduled_time` | TIME | Company-confirmed shift start, OCR-scraped from terminal screen |
+| `daily_total_minutes` | INTEGER | Total time worked per the system screenshot (in minutes) |
 | `created_at` | DATETIME | Set automatically on insert |
 
 Cross-checking works by pairing rows with the same `date` and comparing `source='app'` vs `source='official'`.
+
+### Daily total logic
+
+Each upload may include a "Daily Total" field printed on the terminal screen — this is stored as `daily_total_minutes` (the system's own calculation). The app independently calculates `punch_out − punch_in` (using scheduled start time as the floor if you punched in early) and compares. A mismatch flags a discrepancy.
+
+### Early punch — future grievance opportunity
+
+If your app punch-in time is earlier than your `scheduled_time`, the company's system does **not** count those early minutes toward your pay — your paid time starts at the scheduled start, not when you actually arrived. However, the screenshot from the UPS app is timestamped evidence that you were on the clock before the scheduled time. A future "File Grievance (Early Punch)" feature will let you generate a form for those missed early minutes using this proof.
 
 ## Why this tool exists
 

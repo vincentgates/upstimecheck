@@ -21,7 +21,8 @@ Rules that follow from this:
 When adding any new system-level dependency, ask: *does this work on a fresh Ubuntu dyno?*
 
 ## Status
-Phase 1 in progress. OCR pipeline live, calendar reads DB. Cross-check logic next.
+Phase 1 in progress. OCR pipeline live, calendar reads DB, cross-check logic live.
+Scheduled time + daily total tracking added. Grievance form PDF is next.
 
 ## End goal — why this tool exists
 A time discrepancy between the UPS app punch and the official system = missed pay.
@@ -31,6 +32,13 @@ The cross-check logic detects those discrepancies and the app will auto-generate
 - PDF generation not yet implemented. Planned library: WeasyPrint (HTML → PDF).
 - The form will include: date, app time, official time, delta in minutes, employee name.
 - Trigger: "File Grievance" button on a discrepancy row. Download/print only — no auto-submit.
+
+### Early punch grievance (future)
+If `app.punch_in < scheduled_time`, the company won't pay those early minutes — paid time
+starts at `scheduled_time`. But the app screenshot is timestamped proof that the worker
+was present before the shift start. A future "File Grievance (Early Punch)" feature should
+use that screenshot as exhibit A on an early-punch form. Track this with `scheduled_time`
+(already in DB) and compare against `app` source `punch_in`.
 
 ## Upload workflow (UPS schedule)
 UPS operates Monday–Saturday. Sunday is the ideal upload day:

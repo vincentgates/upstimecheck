@@ -28,6 +28,7 @@
   {% set day_punches = punches_by_date.get(day.date, []) %}
   {% set app_punches      = day_punches | selectattr('source', 'equalto', 'app')      | list %}
   {% set official_punches = day_punches | selectattr('source', 'equalto', 'official') | list %}
+  {% set summary = daily_summaries.get(day.date) %}
 
   <div class="accordion-item">
 
@@ -39,9 +40,9 @@
               aria-expanded="false"
               aria-controls="{{ day.collapse_id }}">
 
-        {# Status badge: red=discrepancy, amber=low confidence, green=clean, gray=no data #}
+        {# Status badge: red=discrepancy or total mismatch, amber=low confidence, green=clean, gray=no data #}
         {% set low_confidence = day_punches | selectattr('confidence', 'lessthan', 0.7) | list %}
-        {% if discrepancies.get(day.date) %}
+        {% if discrepancies.get(day.date) or (summary and summary.total_mismatch) %}
           <span class="badge rounded-pill bg-danger me-3" title="Time discrepancy found">&#9888;</span>
         {% elif low_confidence %}
           <span class="badge rounded-pill bg-warning text-dark me-3" title="Low OCR confidence — review recommended">&#9888;</span>
@@ -64,6 +65,9 @@
           {% if in_punch  %}In {{ in_punch.time.strftime('%H:%M') }}{% endif %}
           {% if in_punch and out_punch %}&nbsp;&bull;&nbsp;{% endif %}
           {% if out_punch %}Out {{ out_punch.time.strftime('%H:%M') }}{% endif %}
+          {% if summary and summary.ocr_total_minutes is not none %}
+            &nbsp;&bull;&nbsp;{{ summary.ocr_total_minutes | fmt_minutes }}
+          {% endif %}
         </span>
         {% endif %}
 
@@ -93,6 +97,12 @@
                     <strong>{{ punch.time.strftime('%H:%M') }}</strong>
                   </div>
                   {% endfor %}
+                  {% if summary and summary.scheduled_time %}
+                  <div class="d-flex justify-content-between py-1 border-bottom">
+                    <span class="text-muted small">Scheduled</span>
+                    <strong>{{ summary.scheduled_time.strftime('%H:%M') }}</strong>
+                  </div>
+                  {% endif %}
                   <p class="mt-2 mb-0 text-muted" style="font-size:.75rem;">
                     Confidence {{ (app_punches[0].confidence * 100) | round(1) }}%
                   </p>
@@ -113,6 +123,24 @@
                     <strong>{{ punch.time.strftime('%H:%M') }}</strong>
                   </div>
                   {% endfor %}
+                  {% if summary and summary.scheduled_time %}
+                  <div class="d-flex justify-content-between py-1 border-bottom">
+                    <span class="text-muted small">Scheduled</span>
+                    <strong>{{ summary.scheduled_time.strftime('%H:%M') }}</strong>
+                  </div>
+                  {% endif %}
+                  {% if summary and summary.ocr_total_minutes is not none %}
+                  <div class="d-flex justify-content-between py-1 border-bottom {% if summary.total_mismatch %}text-danger{% endif %}">
+                    <span class="small">Daily Total <span class="text-muted">(system)</span></span>
+                    <strong>{{ summary.ocr_total_minutes | fmt_minutes }}</strong>
+                  </div>
+                  {% endif %}
+                  {% if summary and summary.calc_total_minutes is not none %}
+                  <div class="d-flex justify-content-between py-1 border-bottom {% if summary.total_mismatch %}text-danger{% endif %}">
+                    <span class="small">Daily Total <span class="text-muted">(calculated)</span></span>
+                    <strong>{{ summary.calc_total_minutes | fmt_minutes }}</strong>
+                  </div>
+                  {% endif %}
                   <p class="mt-2 mb-0 text-muted" style="font-size:.75rem;">
                     Confidence {{ (official_punches[0].confidence * 100) | round(1) }}%
                   </p>
@@ -151,6 +179,7 @@
 {% if day_punches %}
 {% set app_punches      = day_punches | selectattr('source', 'equalto', 'app')      | list %}
 {% set official_punches = day_punches | selectattr('source', 'equalto', 'official') | list %}
+{% set summary = daily_summaries.get(day.date) %}
 
 <div class="modal fade" id="modal-{{ day.date_str }}" tabindex="-1"
      aria-labelledby="modal-label-{{ day.date_str }}" aria-hidden="true">
@@ -213,12 +242,45 @@
 
       </div>
 
+      {# ── Scheduled time + daily totals ───────────────────────────── #}
+      {% if summary and (summary.scheduled_time or summary.ocr_total_minutes is not none) %}
+      <div class="px-1 mb-3">
+        <table class="table table-sm table-borderless mb-0">
+          {% if summary.scheduled_time %}
+          <tr>
+            <td class="text-muted small ps-0">Scheduled start</td>
+            <td class="fw-semibold">{{ summary.scheduled_time.strftime('%H:%M') }}</td>
+          </tr>
+          {% endif %}
+          {% if summary.ocr_total_minutes is not none %}
+          <tr class="{{ 'text-danger' if summary.total_mismatch }}">
+            <td class="text-muted small ps-0">Daily Total (system)</td>
+            <td class="fw-semibold">{{ summary.ocr_total_minutes | fmt_minutes }}</td>
+          </tr>
+          {% endif %}
+          {% if summary.calc_total_minutes is not none %}
+          <tr class="{{ 'text-danger' if summary.total_mismatch }}">
+            <td class="text-muted small ps-0">Daily Total (calculated)</td>
+            <td class="fw-semibold">{{ summary.calc_total_minutes | fmt_minutes }}</td>
+          </tr>
+          {% endif %}
+        </table>
+        {% if summary.total_mismatch %}
+        <div class="text-danger small mt-1">
+          &#9888; System total and calculated total do not match
+          ({{ (summary.ocr_total_minutes - summary.calc_total_minutes) | abs }} min difference).
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
       {# ── Discrepancy summary ──────────────────────────────────────── #}
       {% set issues = discrepancies.get(day.date, []) %}
-      {% if issues %}
+      {% if issues or (summary and summary.total_mismatch) %}
       <div class="modal-footer d-block">
         <div class="alert alert-danger mb-3 py-2">
-          <strong>&#9888; Time discrepancy found</strong>
+          <strong>&#9888; Discrepancy found</strong>
+          {% if issues %}
           <table class="table table-sm table-borderless mb-0 mt-2">
             <thead>
               <tr class="text-muted small">
@@ -243,6 +305,14 @@
               {% endfor %}
             </tbody>
           </table>
+          {% endif %}
+          {% if summary and summary.total_mismatch %}
+          <p class="mb-0 mt-2 small">
+            Daily total mismatch: system shows {{ summary.ocr_total_minutes | fmt_minutes }}
+            but calculated total is {{ summary.calc_total_minutes | fmt_minutes }}
+            ({{ (summary.calc_total_minutes - summary.ocr_total_minutes) | abs }} min short).
+          </p>
+          {% endif %}
         </div>
         <div class="d-flex justify-content-between">
           <button type="button" class="btn btn-secondary btn-sm"

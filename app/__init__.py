@@ -34,6 +34,13 @@ def create_app(config_filename=None):
     app.register_blueprint(calendar.calendar_bp)
     app.register_blueprint(upload_bp)
 
+    @app.template_filter('fmt_minutes')
+    def fmt_minutes(minutes):
+        if minutes is None:
+            return '—'
+        h, m = divmod(int(minutes), 60)
+        return f'{h}h {m:02d}m'
+
     with app.app_context():
         db.create_all()
 
