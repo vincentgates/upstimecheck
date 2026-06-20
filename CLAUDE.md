@@ -40,6 +40,85 @@ was present before the shift start. A future "File Grievance (Early Punch)" feat
 use that screenshot as exhibit A on an early-punch form. Track this with `scheduled_time`
 (already in DB) and compare against `app` source `punch_in`.
 
+## UPS Business Logic — READ BEFORE WRITING CALCULATION CODE
+
+These rules come directly from the UPS Teamsters / IBT part-time contract and
+operational practice. Every calculation, flag, and grievance form must honor them.
+Do not deviate from these rules without explicit instruction.
+
+### Work week and schedule
+
+- The operational week is **Sunday through Saturday**.
+- **Sunday is typically a no-service day** — no deliveries, usually no shifts.
+  It is the natural upload day for the prior Mon–Sat week.
+- **Saturday evening shifts** can run past midnight into early Sunday. The punch date
+  for those records is **Saturday** — determined by EXIF timestamp, never by
+  the clock hour of the following calendar day. This is not an edge case; it is normal.
+- The weekly calendar view should span Sunday → Saturday to match the operational week.
+
+### Part-time overtime threshold
+
+> Part-time employees earn **1.5× pay for every minute worked beyond 5 hours (300 minutes)
+> in a single workday.**
+
+This is a **daily** threshold, not weekly. Do not apply a weekly hour total.
+
+```
+regular_minutes  = min(actual_worked_minutes, 300)
+overtime_minutes = max(actual_worked_minutes - 300, 0)
+total_pay        = (regular_minutes * rate) + (overtime_minutes * rate * 1.5)
+```
+
+Where `actual_worked_minutes = max(punch_out, scheduled_time) - effective_start`.
+The 5-hour clock starts at `effective_start`, which is `max(punch_in, scheduled_time)`
+unless the early punch has been proven (see below).
+
+When a discrepancy exists, always report **which side of the 5-hour line the disputed
+minutes fall on** — missed overtime minutes are worth 1.5× and must be flagged separately
+on the grievance form.
+
+### Scheduled time is mandatory
+
+- `scheduled_time` must be present for any meaningful pay or overtime calculation.
+- The OCR pipeline reads it via `_SCHED_RE` from the terminal screen ("Scheduled HH:MM").
+- If OCR misses it, the Edit modal must be used to fill it in manually.
+- **Never calculate overtime or effective daily total without a known `scheduled_time`.**
+  Show a warning in the UI if it is missing rather than silently calculating with a wrong floor.
+
+### Early punch rules — two distinct states
+
+**State A — Early punch, no proof (default):**
+- `punch_in < scheduled_time`, and no proof has been attached or marked.
+- Treat `effective_start = scheduled_time`.
+- The early minutes do NOT count toward worked time.
+- Do not open a grievance for the early delta — it is within company rights.
+- Flag it in the UI as informational only ("punched in X min early — no proof on file").
+
+**State B — Early punch, proof present:**
+- `punch_in < scheduled_time`, AND the UPS app screenshot constitutes proof that work
+  was being performed before the scheduled start.
+- Treat `effective_start = punch_in` (the actual clock-in time).
+- The early minutes DO count toward worked time and are grievable.
+- The grievance form for an early punch is a **separate form** from the standard
+  punch-time discrepancy form. It should include: date, scheduled start, actual punch-in,
+  early delta in minutes, and the screenshot as exhibit A.
+
+The DB does not yet have a `proof_status` column for early punches — add one when
+building the early punch grievance flow. Until then, all early punches are treated as
+State A (no proof assumed) and flagged for manual review.
+
+### Daily total mismatch interpretation
+
+The `daily_total_minutes` field comes from the terminal screen (what the system says you
+worked). The calculated total is derived from punch times with the scheduled-time floor
+applied. If they differ:
+
+- **System total > calculated total:** The system is crediting you more time than the
+  punch math shows — unusual, worth noting but not grievable.
+- **System total < calculated total:** You worked more than the system credited —
+  this IS grievable. The delta (in minutes) should be reported with its overtime
+  split (how many of those minutes fall past the 5-hour mark).
+
 ## Upload workflow (UPS schedule)
 UPS operates Monday–Saturday. Sunday is the ideal upload day:
 - Upload **both** screenshot sources after the full Mon–Sat week is complete.
