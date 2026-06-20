@@ -5,14 +5,16 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_from_directory
 from PIL import Image
 
-from app.db import db, Punch
+from app.db import db, AppPunch, OfficialPunch
 from app.ocr import extract_punches, _exif_date
 
 upload_bp = Blueprint('upload', __name__)
 
 _ALLOWED_EXTENSIONS = {'.png', '.jpg', '.jpeg'}
 _UPLOAD_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'uploads', 'processed')
-_DISPLAY_WIDTH = 1600  # max width for saved display copy
+_DISPLAY_WIDTH = 1600
+
+_SOURCE_MODEL = {'app': AppPunch, 'official': OfficialPunch}
 
 
 @upload_bp.route('/upload', methods=['GET', 'POST'])
@@ -25,7 +27,7 @@ def upload():
             flash('No file selected.', 'danger')
             return redirect(url_for('upload.upload'))
 
-        if source not in ('app', 'official'):
+        if source not in _SOURCE_MODEL:
             flash('Please select a source (UPS App or Official System).', 'danger')
             return redirect(url_for('upload.upload'))
 
@@ -38,10 +40,8 @@ def upload():
             file.save(tmp.name)
             tmp_path = tmp.name
 
-        # Read EXIF from the original file before Pillow strips it on resave
         exif_date = _exif_date(tmp_path)
 
-        # Manual date from form overrides EXIF; EXIF overrides nothing being set
         fallback_date = exif_date
         date_str = request.form.get('punch_date', '').strip()
         if date_str:
@@ -70,31 +70,30 @@ def upload():
             )
             return redirect(url_for('upload.upload'))
 
+        Model = _SOURCE_MODEL[source]
+
         # Replace existing records for every date found in this upload.
-        # Works for single-day (app) and multi-day (official weekly) uploads alike.
         dates_found = list({p['date'] for p in punches})
-        stale = Punch.query.filter(
-            Punch.source == source,
-            Punch.date.in_(dates_found)
-        ).all()
+        stale = Model.query.filter(Model.date.in_(dates_found)).all()
         if stale:
             orphaned_images = {p.image_path for p in stale if p.image_path}
             for p in stale:
                 db.session.delete(p)
             db.session.commit()
             for img_file in orphaned_images:
-                full = os.path.join(_UPLOAD_DIR, img_file)
-                if os.path.exists(full):
-                    os.remove(full)
+                if not _image_still_referenced(img_file):
+                    full = os.path.join(_UPLOAD_DIR, img_file)
+                    if os.path.exists(full):
+                        os.remove(full)
 
         for data in punches:
-            db.session.add(Punch(source=source, image_path=image_filename, **data))
+            db.session.add(Model(image_path=image_filename, **data))
         db.session.commit()
 
         first_date = min(dates_found)
+        source_label = 'UPS App' if source == 'app' else 'Official System'
         flash(
-            f'Saved {len(punches)} punch(es) across {len(dates_found)} day(s) '
-            f'from {source} screenshot.',
+            f'Saved {len(punches)} day(s) from {source_label} screenshot.',
             'success'
         )
         return redirect(url_for('calendar.show_calendar',
@@ -109,6 +108,14 @@ def serve_upload(filename):
     return send_from_directory(os.path.abspath(_UPLOAD_DIR), filename)
 
 
+def _image_still_referenced(image_path):
+    """Return True if any record in either table still points to this image."""
+    return (
+        AppPunch.query.filter_by(image_path=image_path).count() > 0
+        or OfficialPunch.query.filter_by(image_path=image_path).count() > 0
+    )
+
+
 def _save_display_copy(tmp_path, source, ext):
     """Downsample to display width, save color copy, return filename."""
     os.makedirs(_UPLOAD_DIR, exist_ok=True)
@@ -116,7 +123,6 @@ def _save_display_copy(tmp_path, source, ext):
     if img.width > _DISPLAY_WIDTH:
         scale = _DISPLAY_WIDTH / img.width
         img = img.resize((int(img.width * scale), int(img.height * scale)), Image.LANCZOS)
-    # Convert RGBA/P modes to RGB so JPEG save always works
     if img.mode not in ('RGB', 'L'):
         img = img.convert('RGB')
     filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{source}{ext}"

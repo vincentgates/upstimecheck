@@ -3,9 +3,9 @@ from app.ocr import extract_punches, _decimal_hours_to_time
 path = 'uploads/test/Screenshot_20260619_165701_Chrome.jpg'
 punches = extract_punches(path, 'official')
 
-print('Found', len(punches), 'punches:')
+print('Found', len(punches), 'days:')
 for p in punches:
-    print(' ', p['date'], p['type'], p['time'], 'total=' + str(p['daily_total_minutes']) + 'min')
+    print(' ', p['date'], 'in=' + str(p['punch_in']), 'out=' + str(p['punch_out']), 'total=' + str(p['daily_total_minutes']) + 'min')
 
 print()
 print('Decimal hours conversion check:')

@@ -16,55 +16,43 @@ def get_week_days(week_start, week_end):
     return days
 
 
-def check_discrepancies(punches_by_date):
+def check_discrepancies(app_by_date, official_by_date):
     """
-    Compare app vs official punches for each date.
+    Compare app vs official punch times for each date that appears in both sources.
 
-    Returns a dict keyed by date. Each value is a list of dicts:
-        {'type': 'in'|'out', 'app': time|None, 'official': time|None, 'delta_minutes': int}
+    Returns a dict keyed by date. Each value is a list of issue dicts:
+        {'type': 'in'|'out', 'app': time|None, 'official': time|None, 'delta_minutes': int|None}
 
-    A discrepancy exists when both sources have a punch of the same type but the
-    times differ, OR when one source has a punch and the other doesn't.
-    Days with no discrepancies are not included in the result.
+    Only dates where both sources have a record are compared.
     """
     result = {}
+    all_dates = set(app_by_date.keys()) | set(official_by_date.keys())
 
-    for date, punches in punches_by_date.items():
-        app      = {p.type: p for p in punches if p.source == 'app'}
-        official = {p.type: p for p in punches if p.source == 'official'}
+    for date in sorted(all_dates):
+        ap = app_by_date.get(date)
+        op = official_by_date.get(date)
 
-        if not app or not official:
-            # Only one source uploaded — nothing to cross-check yet
+        if not ap or not op:
             continue
 
         day_issues = []
-        for punch_type in ('in', 'out'):
-            app_punch      = app.get(punch_type)
-            official_punch = official.get(punch_type)
-
-            if app_punch and official_punch:
-                delta = _delta_minutes(app_punch.time, official_punch.time)
+        for label, app_time, off_time in [
+            ('in',  ap.punch_in,  op.punch_in),
+            ('out', ap.punch_out, op.punch_out),
+        ]:
+            if app_time and off_time:
+                delta = _delta_minutes(app_time, off_time)
                 if delta != 0:
                     day_issues.append({
-                        'type':          punch_type,
-                        'app':           app_punch.time,
-                        'official':      official_punch.time,
+                        'type':          label,
+                        'app':           app_time,
+                        'official':      off_time,
                         'delta_minutes': delta,
                     })
-            elif app_punch and not official_punch:
-                day_issues.append({
-                    'type':          punch_type,
-                    'app':           app_punch.time,
-                    'official':      None,
-                    'delta_minutes': None,
-                })
-            elif official_punch and not app_punch:
-                day_issues.append({
-                    'type':          punch_type,
-                    'app':           None,
-                    'official':      official_punch.time,
-                    'delta_minutes': None,
-                })
+            elif app_time and not off_time:
+                day_issues.append({'type': label, 'app': app_time, 'official': None, 'delta_minutes': None})
+            elif off_time and not app_time:
+                day_issues.append({'type': label, 'app': None, 'official': off_time, 'delta_minutes': None})
 
         if day_issues:
             result[date] = day_issues
@@ -72,50 +60,48 @@ def check_discrepancies(punches_by_date):
     return result
 
 
-def get_daily_summaries(punches_by_date):
+def get_daily_summaries(app_by_date, official_by_date):
     """
-    Per-day summary of scheduled time, OCR-scraped daily total, and our own
-    calculated total (punch_out - punch_in).
+    Per-day summary of scheduled time, OCR-scraped daily total, and calculated total.
 
     Returns a dict keyed by date:
         {
-            'scheduled_time':      time | None,
-            'ocr_total_minutes':   int | None,   # what the terminal screen says
-            'calc_total_minutes':  int | None,   # our calculation
-            'total_mismatch':      bool,          # True when both exist and differ
+            'scheduled_time':     time | None,
+            'ocr_total_minutes':  int | None,
+            'calc_total_minutes': int | None,
+            'total_mismatch':     bool,
         }
-
-    calc_total_minutes uses the official source punches (the authoritative record).
-    If the worker punched in before scheduled time, the effective start is the
-    scheduled time (company doesn't pay before the shift starts). This is noted as
-    an early punch — see README for the planned early-punch proof feature.
     """
     result = {}
+    all_dates = set(app_by_date.keys()) | set(official_by_date.keys())
 
-    for date, punches in punches_by_date.items():
-        # Prefer official source for calculated total; fall back to app
-        official_punches = [p for p in punches if p.source == 'official']
-        reference = official_punches if official_punches else punches
+    for date in all_dates:
+        ap = app_by_date.get(date)
+        op = official_by_date.get(date)
 
-        scheduled = next((p.scheduled_time for p in punches if p.scheduled_time), None)
-        ocr_total = next((p.daily_total_minutes for p in punches if p.daily_total_minutes is not None), None)
+        scheduled = ap.scheduled_time if ap else None
 
-        ref_in  = next((p for p in reference if p.type == 'in'),  None)
-        ref_out = next((p for p in reference if p.type == 'out'), None)
+        # Prefer official total; fall back to app total
+        ocr_total = None
+        if op and op.daily_total_minutes is not None:
+            ocr_total = op.daily_total_minutes
+        elif ap and ap.daily_total_minutes is not None:
+            ocr_total = ap.daily_total_minutes
 
+        # Calculate total from the official source (authoritative); fall back to app
+        ref = op or ap
         calc_total = None
-        if ref_in and ref_out:
-            # If punch_in is before scheduled, company counts from scheduled — not from actual punch
-            effective_in = ref_in.time
+        if ref and ref.punch_in and ref.punch_out:
+            effective_in = ref.punch_in
             if scheduled and effective_in < scheduled:
                 effective_in = scheduled
-            calc_total = _delta_minutes(ref_out.time, effective_in)
+            calc_total = _delta_minutes(ref.punch_out, effective_in)
 
         result[date] = {
             'scheduled_time':     scheduled,
             'ocr_total_minutes':  ocr_total,
             'calc_total_minutes': calc_total,
-            'total_mismatch':     (
+            'total_mismatch': (
                 ocr_total is not None
                 and calc_total is not None
                 and ocr_total != calc_total

@@ -1,15 +1,16 @@
 import os
-from collections import defaultdict
 from datetime import datetime, timedelta
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
-from app.db import db, Punch
+from app.db import db, AppPunch, OfficialPunch
 from .models import get_week_days, check_discrepancies, get_daily_summaries
 
 _UPLOAD_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), '..', '..', '..', 'uploads', 'processed')
 )
+
+_SOURCE_MODEL = {'app': AppPunch, 'official': OfficialPunch}
 
 calendar_bp = Blueprint('calendar', __name__)
 
@@ -26,31 +27,35 @@ def show_calendar(date=None):
     else:
         given = today
 
-    # Always resolve to the Saturday that ends the week containing `given`,
-    # regardless of which day of the week the URL date falls on.
+    # Resolve to the Saturday that ends the week containing `given`
     week_end = given + timedelta((5 - given.weekday()) % 7)
-
     week_start = week_end - timedelta(days=6)
     days = get_week_days(week_start, week_end)
 
-    punches = (
-        Punch.query
-        .filter(Punch.date >= week_start, Punch.date <= week_end)
-        .order_by(Punch.date, Punch.time)
+    app_punches = (
+        AppPunch.query
+        .filter(AppPunch.date >= week_start, AppPunch.date <= week_end)
+        .order_by(AppPunch.date)
+        .all()
+    )
+    official_punches = (
+        OfficialPunch.query
+        .filter(OfficialPunch.date >= week_start, OfficialPunch.date <= week_end)
+        .order_by(OfficialPunch.date)
         .all()
     )
 
-    punches_by_date = defaultdict(list)
-    for p in punches:
-        punches_by_date[p.date].append(p)
+    app_by_date      = {p.date: p for p in app_punches}
+    official_by_date = {p.date: p for p in official_punches}
 
-    discrepancies   = check_discrepancies(punches_by_date)
-    daily_summaries = get_daily_summaries(punches_by_date)
+    discrepancies   = check_discrepancies(app_by_date, official_by_date)
+    daily_summaries = get_daily_summaries(app_by_date, official_by_date)
 
     return render_template(
         'calendar/cal-weekly.html',
         days=days,
-        punches_by_date=punches_by_date,
+        app_by_date=app_by_date,
+        official_by_date=official_by_date,
         discrepancies=discrepancies,
         daily_summaries=daily_summaries,
         week_start=week_start,
@@ -61,90 +66,84 @@ def show_calendar(date=None):
     )
 
 
-@calendar_bp.route('/cal/<date>/edit', methods=['POST'])
-def edit_punches(date):
-    # ── Per-punch time edits ──────────────────────────────────────────────────
-    punch_ids = request.form.getlist('punch_id')
-    for pid in punch_ids:
-        time_str = request.form.get(f'time_{pid}', '').strip()
-        if not time_str:
-            continue
-        punch = Punch.query.get(int(pid))
-        if punch:
-            try:
-                punch.time = datetime.strptime(time_str, '%H:%M').time()
-            except ValueError:
-                flash(f'Invalid time value "{time_str}" — skipped.', 'warning')
+@calendar_bp.route('/cal/<date>/edit/<source>', methods=['POST'])
+def edit_punch(date, source):
+    Model = _SOURCE_MODEL.get(source)
+    if not Model:
+        flash('Invalid source.', 'danger')
+        return redirect(url_for('calendar.show_calendar', date=date))
 
-    # ── Day-level fields ───────────────────────────────────────────────────────
-    try:
-        target_date = datetime.strptime(date, '%Y-%m-%d').date()
-    except ValueError:
-        target_date = None
-
-    if target_date:
-        sched_str    = request.form.get('scheduled_time',    '').strip()
-        app_tot_str  = request.form.get('app_daily_total',   '').strip()
-        off_tot_str  = request.form.get('official_daily_total', '').strip()
-
-        new_sched = None
-        if sched_str:
-            try:
-                new_sched = datetime.strptime(sched_str, '%H:%M').time()
-            except ValueError:
-                flash('Invalid scheduled time — use HH:MM.', 'warning')
-                sched_str = None
-
-        new_app_tot = None
-        if app_tot_str:
-            try:
-                h, m = app_tot_str.split(':')
-                new_app_tot = int(h) * 60 + int(m)
-            except (ValueError, AttributeError):
-                flash('Invalid Daily Total — use H:MM (e.g. 5:30).', 'warning')
-                app_tot_str = None
-
-        new_off_tot = None
-        if off_tot_str:
-            try:
-                h, m = off_tot_str.split(':')
-                new_off_tot = int(h) * 60 + int(m)
-            except (ValueError, AttributeError):
-                flash('Invalid Total Hours — use H:MM (e.g. 5:30).', 'warning')
-                off_tot_str = None
-
-        for p in Punch.query.filter_by(date=target_date).all():
-            if sched_str is not None:
-                p.scheduled_time = new_sched
-            if p.source == 'app' and app_tot_str is not None:
-                p.daily_total_minutes = new_app_tot
-            if p.source == 'official' and off_tot_str is not None:
-                p.daily_total_minutes = new_off_tot
-
-    db.session.commit()
-    flash('Punches updated.', 'success')
-    return redirect(url_for('calendar.show_calendar', date=date))
-
-
-@calendar_bp.route('/cal/<date>/delete', methods=['POST'])
-def delete_day(date):
     try:
         target_date = datetime.strptime(date, '%Y-%m-%d').date()
     except ValueError:
         flash('Invalid date.', 'danger')
         return redirect(url_for('calendar.show_calendar'))
 
-    punches = Punch.query.filter_by(date=target_date).all()
-    image_paths = {p.image_path for p in punches if p.image_path}
+    p = Model.query.filter_by(date=target_date).first()
+    if not p:
+        flash('Record not found.', 'warning')
+        return redirect(url_for('calendar.show_calendar', date=date))
 
-    for p in punches:
-        db.session.delete(p)
+    try:
+        p.punch_in  = _parse_time(request.form.get('punch_in',  ''))
+        p.punch_out = _parse_time(request.form.get('punch_out', ''))
+        p.daily_total_minutes = _parse_total(request.form.get('daily_total', ''))
+        if source == 'app':
+            p.scheduled_time = _parse_time(request.form.get('scheduled_time', ''))
+    except ValueError as e:
+        flash(f'Invalid value: {e}', 'warning')
+        return redirect(url_for('calendar.show_calendar', date=date))
+
     db.session.commit()
-
-    for img in image_paths:
-        full = os.path.join(_UPLOAD_DIR, img)
-        if os.path.exists(full):
-            os.remove(full)
-
-    flash(f'All records for {target_date.strftime("%b %d")} deleted.', 'success')
+    flash('Record updated.', 'success')
     return redirect(url_for('calendar.show_calendar', date=date))
+
+
+@calendar_bp.route('/cal/<date>/delete/<source>', methods=['POST'])
+def delete_punch(date, source):
+    Model = _SOURCE_MODEL.get(source)
+    if not Model:
+        flash('Invalid source.', 'danger')
+        return redirect(url_for('calendar.show_calendar'))
+
+    try:
+        target_date = datetime.strptime(date, '%Y-%m-%d').date()
+    except ValueError:
+        flash('Invalid date.', 'danger')
+        return redirect(url_for('calendar.show_calendar'))
+
+    p = Model.query.filter_by(date=target_date).first()
+    if p:
+        image_path = p.image_path
+        db.session.delete(p)
+        db.session.commit()
+        if image_path and not _image_still_referenced(image_path):
+            full = os.path.join(_UPLOAD_DIR, image_path)
+            if os.path.exists(full):
+                os.remove(full)
+
+    source_label = 'UPS App' if source == 'app' else 'Official System'
+    flash(f'{source_label} record for {target_date.strftime("%b %d")} deleted.', 'success')
+    return redirect(url_for('calendar.show_calendar', date=date))
+
+
+def _image_still_referenced(image_path):
+    return (
+        AppPunch.query.filter_by(image_path=image_path).count() > 0
+        or OfficialPunch.query.filter_by(image_path=image_path).count() > 0
+    )
+
+
+def _parse_time(val):
+    val = val.strip()
+    if not val:
+        return None
+    return datetime.strptime(val, '%H:%M').time()
+
+
+def _parse_total(val):
+    val = val.strip()
+    if not val:
+        return None
+    h, m = val.split(':')
+    return int(h) * 60 + int(m)

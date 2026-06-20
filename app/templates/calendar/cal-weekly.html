@@ -22,483 +22,255 @@
      class="btn btn-outline-secondary btn-sm">Next Week &rarr;</a>
 </div>
 
-{# ── Weekly accordion ────────────────────────────────────────────────────── #}
-<div class="accordion accordion-flush mb-5" id="WeeklyView">
-  {% for day in days %}
-  {% set day_punches = punches_by_date.get(day.date, []) %}
-  {% set app_punches      = day_punches | selectattr('source', 'equalto', 'app')      | list %}
-  {% set official_punches = day_punches | selectattr('source', 'equalto', 'official') | list %}
-  {% set summary = daily_summaries.get(day.date) %}
-
-  <div class="accordion-item">
-
-    {# ── Accordion header ──────────────────────────────────────────────── #}
-    <h2 class="accordion-header d-flex align-items-stretch">
-      <button class="accordion-button collapsed flex-fill" type="button"
-              data-bs-toggle="collapse"
-              data-bs-target="#{{ day.collapse_id }}"
-              aria-expanded="false"
-              aria-controls="{{ day.collapse_id }}">
-
-        {# Status badge: red=discrepancy or total mismatch, amber=low confidence, green=clean, gray=no data #}
-        {% set low_confidence = day_punches | selectattr('confidence', 'lessthan', 0.7) | list %}
-        {% if discrepancies.get(day.date) or (summary and summary.total_mismatch) %}
-          <span class="badge rounded-pill bg-danger me-3" title="Time discrepancy found">&#9888;</span>
-        {% elif low_confidence %}
-          <span class="badge rounded-pill bg-warning text-dark me-3" title="Low OCR confidence — review recommended">&#9888;</span>
-        {% elif day_punches %}
-          <span class="badge rounded-pill bg-success me-3">&#10003;</span>
-        {% else %}
-          <span class="badge rounded-pill bg-light text-secondary border me-3">&ndash;</span>
-        {% endif %}
-
-        <strong>{{ day.label }}</strong>
-        <span class="ms-2 text-muted small">
-          {{ day.date.strftime('%b') }} {{ day.date.day }}
-        </span>
-
-        {# Inline punch summary when data exists #}
-        {% if day_punches %}
-        <span class="ms-auto me-3 small text-muted d-none d-md-inline">
-          {% set in_punch  = day_punches | selectattr('type', 'equalto', 'in')  | first | default(none) %}
-          {% set out_punch = day_punches | selectattr('type', 'equalto', 'out') | first | default(none) %}
-          {% if in_punch  %}In {{ in_punch.time.strftime('%H:%M') }}{% endif %}
-          {% if in_punch and out_punch %}&nbsp;&bull;&nbsp;{% endif %}
-          {% if out_punch %}Out {{ out_punch.time.strftime('%H:%M') }}{% endif %}
-          {% if summary and summary.ocr_total_minutes is not none %}
-            &nbsp;&bull;&nbsp;{{ summary.ocr_total_minutes | fmt_minutes }}
-          {% endif %}
-        </span>
-        {% endif %}
-
-      </button>
-      {% if day_punches %}
-      <form method="POST"
-            action="{{ url_for('calendar.delete_day', date=day.date_str) }}"
-            class="d-flex align-items-center px-2 border-start"
-            onsubmit="return confirm('Delete all records for {{ day.label }} ({{ day.date_str }})?')">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-sm btn-outline-danger border-0"
-                title="Delete all records for this day">&#128465;</button>
-      </form>
-      {% endif %}
-    </h2>
-
-    {# ── Accordion body ────────────────────────────────────────────────── #}
-    <div id="{{ day.collapse_id }}" class="accordion-collapse collapse"
-         data-bs-parent="#WeeklyView">
-      <div class="accordion-body">
-
-        {% if not day_punches %}
-          <p class="text-muted mb-0">No punches recorded for this day.</p>
-
-        {% else %}
-          <div class="row g-3 mb-3">
-
-            {# App source card #}
-            {% if app_punches %}
-            <div class="col-sm-6">
-              <div class="card h-100">
-                <div class="card-body">
-                  <h6 class="card-subtitle mb-2 text-muted text-uppercase" style="font-size:.7rem;letter-spacing:.05em;">UPS App</h6>
-                  {% for punch in app_punches | sort(attribute='time') %}
-                  <div class="d-flex justify-content-between py-1 border-bottom">
-                    <span class="text-capitalize text-muted small">{{ punch.type }}</span>
-                    <strong>{{ punch.time.strftime('%H:%M') }}</strong>
-                  </div>
-                  {% endfor %}
-                  {% if summary and summary.scheduled_time %}
-                  <div class="d-flex justify-content-between py-1 border-bottom">
-                    <span class="text-muted small">Scheduled</span>
-                    <strong>{{ summary.scheduled_time.strftime('%H:%M') }}</strong>
-                  </div>
-                  {% endif %}
-                  <p class="mt-2 mb-0 text-muted" style="font-size:.75rem;">
-                    Confidence {{ (app_punches[0].confidence * 100) | round(1) }}%
-                  </p>
-                </div>
-              </div>
-            </div>
-            {% endif %}
-
-            {# Official source card #}
-            {% if official_punches %}
-            <div class="col-sm-6">
-              <div class="card h-100">
-                <div class="card-body">
-                  <h6 class="card-subtitle mb-2 text-muted text-uppercase" style="font-size:.7rem;letter-spacing:.05em;">Official System</h6>
-                  {% for punch in official_punches | sort(attribute='time') %}
-                  <div class="d-flex justify-content-between py-1 border-bottom">
-                    <span class="text-capitalize text-muted small">{{ punch.type }}</span>
-                    <strong>{{ punch.time.strftime('%H:%M') }}</strong>
-                  </div>
-                  {% endfor %}
-                  {% if summary and summary.scheduled_time %}
-                  <div class="d-flex justify-content-between py-1 border-bottom">
-                    <span class="text-muted small">Scheduled</span>
-                    <strong>{{ summary.scheduled_time.strftime('%H:%M') }}</strong>
-                  </div>
-                  {% endif %}
-                  {% if summary and summary.ocr_total_minutes is not none %}
-                  <div class="d-flex justify-content-between py-1 border-bottom {% if summary.total_mismatch %}text-danger{% endif %}">
-                    <span class="small">Daily Total <span class="text-muted">(system)</span></span>
-                    <strong>{{ summary.ocr_total_minutes | fmt_minutes }}</strong>
-                  </div>
-                  {% endif %}
-                  {% if summary and summary.calc_total_minutes is not none %}
-                  <div class="d-flex justify-content-between py-1 border-bottom {% if summary.total_mismatch %}text-danger{% endif %}">
-                    <span class="small">Daily Total <span class="text-muted">(calculated)</span></span>
-                    <strong>{{ summary.calc_total_minutes | fmt_minutes }}</strong>
-                  </div>
-                  {% endif %}
-                  <p class="mt-2 mb-0 text-muted" style="font-size:.75rem;">
-                    Confidence {{ (official_punches[0].confidence * 100) | round(1) }}%
-                  </p>
-                </div>
-              </div>
-            </div>
-            {% endif %}
-
-          </div>{# /row #}
-
-          <div class="btn-group btn-group-sm" role="group">
-            <button type="button" class="btn btn-outline-primary"
+{# ── UPS App table ───────────────────────────────────────────────────────── #}
+<div class="mb-5">
+  <div class="d-flex justify-content-between align-items-baseline mb-2">
+    <h5 class="mb-0">UPS App</h5>
+    <a href="{{ url_for('upload.upload') }}" class="btn btn-sm btn-outline-primary">Upload</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Date</th>
+          <th>Scheduled</th>
+          <th>Punch In</th>
+          <th>Punch Out</th>
+          <th>Daily Total</th>
+          <th class="text-end">Conf.</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for day in days %}
+        {% set ap = app_by_date.get(day.date) %}
+        {% set disc = discrepancies.get(day.date) %}
+        <tr class="{{ 'table-danger' if disc else '' }}">
+          <td class="fw-semibold text-nowrap">
+            {{ day.short }} {{ day.date.strftime('%m/%d') }}
+            {% if disc %}<span class="text-danger ms-1" title="Discrepancy detected">&#9888;</span>{% endif %}
+          </td>
+          <td>{{ ap.scheduled_time.strftime('%H:%M') if ap and ap.scheduled_time else '—' }}</td>
+          <td>
+            {% if ap %}
+              {% if ap.punch_in %}{{ ap.punch_in.strftime('%H:%M') }}{% else %}<span class="text-muted">--:--</span>{% endif %}
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td>
+            {% if ap %}
+              {% if ap.punch_out %}{{ ap.punch_out.strftime('%H:%M') }}{% else %}<span class="text-muted">--:--</span>{% endif %}
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td>{{ ap.daily_total_minutes | fmt_minutes if ap and ap.daily_total_minutes is not none else '—' }}</td>
+          <td class="text-end text-muted small">
+            {% if ap %}{{ (ap.confidence * 100) | round(1) }}%{% else %}—{% endif %}
+          </td>
+          <td class="text-nowrap">
+            {% if ap %}
+            <button type="button" class="btn btn-sm btn-outline-warning py-0 px-2"
                     data-bs-toggle="modal"
-                    data-bs-target="#modal-{{ day.date_str }}">
-              View
-            </button>
-            <button type="button" class="btn btn-outline-warning"
-                    data-bs-toggle="modal"
-                    data-bs-target="#edit-modal-{{ day.date_str }}">
-              Edit
-            </button>
-          </div>
-
-        {% endif %}
-      </div>
-    </div>
-
-  </div>{# /accordion-item #}
-  {% endfor %}
-</div>{# /accordion #}
-
-
-{# ── Modals (one pre-rendered per day that has punches) ──────────────────── #}
-{% for day in days %}
-{% set day_punches = punches_by_date.get(day.date, []) %}
-{% if day_punches %}
-{% set app_punches      = day_punches | selectattr('source', 'equalto', 'app')      | list %}
-{% set official_punches = day_punches | selectattr('source', 'equalto', 'official') | list %}
-{% set summary = daily_summaries.get(day.date) %}
-
-<div class="modal fade" id="modal-{{ day.date_str }}" tabindex="-1"
-     aria-labelledby="modal-label-{{ day.date_str }}" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-
-      <div class="modal-header">
-        <h5 class="modal-title" id="modal-label-{{ day.date_str }}">
-          {{ day.label }},
-          {{ day.date.strftime('%B') }} {{ day.date.day }}, {{ day.date.year }}
-        </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-
-      <div class="modal-body">
-
-        {% if app_punches %}
-        <h6 class="text-muted text-uppercase mb-2" style="font-size:.75rem;letter-spacing:.06em;">UPS App</h6>
-        <table class="table table-sm mb-4">
-          <thead class="table-light">
-            <tr>
-              <th>Type</th>
-              <th>Time</th>
-              <th class="text-end">Confidence</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for punch in app_punches | sort(attribute='time') %}
-            <tr>
-              <td class="text-capitalize">{{ punch.type }}</td>
-              <td><strong>{{ punch.time.strftime('%H:%M') }}</strong></td>
-              <td class="text-end text-muted">{{ (punch.confidence * 100) | round(1) }}%</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% endif %}
-
-        {% if official_punches %}
-        <h6 class="text-muted text-uppercase mb-2" style="font-size:.75rem;letter-spacing:.06em;">Official System</h6>
-        <table class="table table-sm mb-2">
-          <thead class="table-light">
-            <tr>
-              <th>Type</th>
-              <th>Time</th>
-              <th class="text-end">Confidence</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for punch in official_punches | sort(attribute='time') %}
-            <tr>
-              <td class="text-capitalize">{{ punch.type }}</td>
-              <td><strong>{{ punch.time.strftime('%H:%M') }}</strong></td>
-              <td class="text-end text-muted">{{ (punch.confidence * 100) | round(1) }}%</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% endif %}
-
-      </div>
-
-      {# ── Scheduled time + daily totals ───────────────────────────── #}
-      {% if summary and (summary.scheduled_time or summary.ocr_total_minutes is not none) %}
-      <div class="px-1 mb-3">
-        <table class="table table-sm table-borderless mb-0">
-          {% if summary.scheduled_time %}
-          <tr>
-            <td class="text-muted small ps-0">Scheduled start</td>
-            <td class="fw-semibold">{{ summary.scheduled_time.strftime('%H:%M') }}</td>
-          </tr>
-          {% endif %}
-          {% if summary.ocr_total_minutes is not none %}
-          <tr class="{{ 'text-danger' if summary.total_mismatch }}">
-            <td class="text-muted small ps-0">Daily Total (system)</td>
-            <td class="fw-semibold">{{ summary.ocr_total_minutes | fmt_minutes }}</td>
-          </tr>
-          {% endif %}
-          {% if summary.calc_total_minutes is not none %}
-          <tr class="{{ 'text-danger' if summary.total_mismatch }}">
-            <td class="text-muted small ps-0">Daily Total (calculated)</td>
-            <td class="fw-semibold">{{ summary.calc_total_minutes | fmt_minutes }}</td>
-          </tr>
-          {% endif %}
-        </table>
-        {% if summary.total_mismatch %}
-        <div class="text-danger small mt-1">
-          &#9888; System total and calculated total do not match
-          ({{ (summary.ocr_total_minutes - summary.calc_total_minutes) | abs }} min difference).
-        </div>
-        {% endif %}
-      </div>
-      {% endif %}
-
-      {# ── Discrepancy summary ──────────────────────────────────────── #}
-      {% set issues = discrepancies.get(day.date, []) %}
-      {% if issues or (summary and summary.total_mismatch) %}
-      <div class="modal-footer d-block">
-        <div class="alert alert-danger mb-3 py-2">
-          <strong>&#9888; Discrepancy found</strong>
-          {% if issues %}
-          <table class="table table-sm table-borderless mb-0 mt-2">
-            <thead>
-              <tr class="text-muted small">
-                <th>Punch</th><th>App</th><th>Official</th><th>Difference</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for issue in issues %}
-              <tr>
-                <td class="text-capitalize">{{ issue.type }}</td>
-                <td>{{ issue.app.strftime('%H:%M') if issue.app else '—' }}</td>
-                <td>{{ issue.official.strftime('%H:%M') if issue.official else '—' }}</td>
-                <td>
-                  {% if issue.delta_minutes is not none %}
-                    {{ issue.delta_minutes | abs }} min
-                    ({{ 'app ahead' if issue.delta_minutes > 0 else 'official ahead' }})
-                  {% else %}
-                    missing from one source
-                  {% endif %}
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-          {% endif %}
-          {% if summary and summary.total_mismatch %}
-          <p class="mb-0 mt-2 small">
-            Daily total mismatch: system shows {{ summary.ocr_total_minutes | fmt_minutes }}
-            but calculated total is {{ summary.calc_total_minutes | fmt_minutes }}
-            ({{ (summary.calc_total_minutes - summary.ocr_total_minutes) | abs }} min short).
-          </p>
-          {% endif %}
-        </div>
-        <div class="d-flex justify-content-between">
-          <button type="button" class="btn btn-secondary btn-sm"
-                  data-bs-dismiss="modal">Close</button>
-          <button type="button" class="btn btn-danger btn-sm" disabled
-                  title="Grievance form PDF — coming soon">
-            &#128196; File Grievance
-          </button>
-        </div>
-      </div>
-      {% else %}
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary btn-sm"
-                data-bs-dismiss="modal">Close</button>
-      </div>
-      {% endif %}
-
-    </div>
+                    data-bs-target="#edit-app-{{ day.date_str }}">Edit</button>
+            <form method="POST"
+                  action="{{ url_for('calendar.delete_punch', date=day.date_str, source='app') }}"
+                  class="d-inline ms-1"
+                  onsubmit="return confirm('Delete UPS App record for {{ day.date_str }}?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2"
+                      title="Delete this record">&#128465;</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
-{% endif %}
-{% endfor %}
-{# ── Edit modals (one per day that has punches) ──────────────────────────── #}
-{% for day in days %}
-{% set day_punches = punches_by_date.get(day.date, []) %}
-{% if day_punches %}
 
-<div class="modal fade" id="edit-modal-{{ day.date_str }}" tabindex="-1"
-     aria-labelledby="edit-label-{{ day.date_str }}" aria-hidden="true">
+{# ── Official System table ────────────────────────────────────────────────── #}
+<div class="mb-5">
+  <div class="d-flex justify-content-between align-items-baseline mb-2">
+    <h5 class="mb-0">Official System</h5>
+    <a href="{{ url_for('upload.upload') }}" class="btn btn-sm btn-outline-primary">Upload</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Date</th>
+          <th>Start Time</th>
+          <th>End Time</th>
+          <th>Total Hours</th>
+          <th class="text-end">Conf.</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for day in days %}
+        {% set op = official_by_date.get(day.date) %}
+        {% set disc = discrepancies.get(day.date) %}
+        <tr class="{{ 'table-danger' if disc else '' }}">
+          <td class="fw-semibold text-nowrap">
+            {{ day.short }} {{ day.date.strftime('%m/%d') }}
+            {% if disc %}<span class="text-danger ms-1" title="Discrepancy detected">&#9888;</span>{% endif %}
+          </td>
+          <td>
+            {% if op %}
+              {% if op.punch_in %}{{ op.punch_in.strftime('%H:%M') }}{% else %}<span class="text-muted">--:--</span>{% endif %}
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td>
+            {% if op %}
+              {% if op.punch_out %}{{ op.punch_out.strftime('%H:%M') }}{% else %}<span class="text-muted">--:--</span>{% endif %}
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td>{{ op.daily_total_minutes | fmt_minutes if op and op.daily_total_minutes is not none else '—' }}</td>
+          <td class="text-end text-muted small">
+            {% if op %}{{ (op.confidence * 100) | round(1) }}%{% else %}—{% endif %}
+          </td>
+          <td class="text-nowrap">
+            {% if op %}
+            <button type="button" class="btn btn-sm btn-outline-warning py-0 px-2"
+                    data-bs-toggle="modal"
+                    data-bs-target="#edit-off-{{ day.date_str }}">Edit</button>
+            <form method="POST"
+                  action="{{ url_for('calendar.delete_punch', date=day.date_str, source='official') }}"
+                  class="d-inline ms-1"
+                  onsubmit="return confirm('Delete Official System record for {{ day.date_str }}?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2"
+                      title="Delete this record">&#128465;</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ── Cross-check discrepancy summary ─────────────────────────────────────── #}
+{% if discrepancies %}
+<div class="alert alert-danger mb-5">
+  <strong>&#9888; Time discrepancies found this week</strong>
+  <table class="table table-sm table-borderless mb-0 mt-2">
+    <thead>
+      <tr class="text-muted small">
+        <th>Date</th><th>Punch</th><th>App</th><th>Official</th><th>Difference</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for date, issues in discrepancies.items() | sort %}
+      {% for issue in issues %}
+      <tr>
+        <td class="small">{{ date.strftime('%a %m/%d') }}</td>
+        <td class="text-capitalize">{{ issue.type }}</td>
+        <td>{{ issue.app.strftime('%H:%M') if issue.app else '—' }}</td>
+        <td>{{ issue.official.strftime('%H:%M') if issue.official else '—' }}</td>
+        <td>
+          {% if issue.delta_minutes is not none %}
+            {{ issue.delta_minutes | abs }} min
+            ({{ 'app ahead' if issue.delta_minutes > 0 else 'official ahead' }})
+          {% else %}
+            missing from one source
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      {% endfor %}
+    </tbody>
+  </table>
+  <button type="button" class="btn btn-danger btn-sm mt-2" disabled
+          title="Grievance form PDF — coming soon">&#128196; File Grievance</button>
+</div>
+{% endif %}
+
+
+{# ═══════════════════════════════════════════════════════════════════════════
+   Edit modals — UPS App (one per day that has a record)
+════════════════════════════════════════════════════════════════════════════ #}
+{% for day in days %}
+{% set ap = app_by_date.get(day.date) %}
+{% if ap %}
+<div class="modal fade" id="edit-app-{{ day.date_str }}" tabindex="-1"
+     aria-labelledby="edit-app-label-{{ day.date_str }}" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered">
     <div class="modal-content">
 
       <div class="modal-header">
-        <h5 class="modal-title" id="edit-label-{{ day.date_str }}">
-          Edit &mdash; {{ day.label }}, {{ day.date.strftime('%B') }} {{ day.date.day }}, {{ day.date.year }}
+        <h5 class="modal-title" id="edit-app-label-{{ day.date_str }}">
+          UPS App &mdash; {{ day.label }}, {{ day.date.strftime('%B') }} {{ day.date.day }}, {{ day.date.year }}
         </h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
 
       <form method="POST"
-            action="{{ url_for('calendar.edit_punches', date=day.date_str) }}">
+            action="{{ url_for('calendar.edit_punch', date=day.date_str, source='app') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <div class="modal-body">
           <div class="row g-3">
 
-            {# ── Left panel: original screenshot(s) ── #}
+            {# Left: screenshot #}
             <div class="col-md-6">
               <p class="text-muted text-uppercase mb-2" style="font-size:.7rem;letter-spacing:.05em;">
                 Original Screenshot
               </p>
-              {% set images_shown = [] %}
-              {% for punch in day_punches %}
-                {% if punch.image_path and punch.image_path not in images_shown %}
-                  {% set _ = images_shown.append(punch.image_path) %}
-                  <img src="{{ url_for('upload.serve_upload', filename=punch.image_path) }}"
-                       class="img-fluid rounded border mb-2"
-                       style="cursor:zoom-in;"
-                       data-lightbox
-                       alt="Punch screenshot {{ punch.source }}">
-                {% endif %}
-              {% endfor %}
-              {% if not images_shown %}
-                <p class="text-muted small fst-italic">No image saved for this record.</p>
+              {% if ap.image_path %}
+              <img src="{{ url_for('upload.serve_upload', filename=ap.image_path) }}"
+                   class="img-fluid rounded border"
+                   style="cursor:zoom-in;"
+                   data-lightbox
+                   alt="UPS App screenshot {{ day.date_str }}">
+              {% else %}
+              <p class="text-muted small fst-italic">No image saved for this record.</p>
               {% endif %}
             </div>
 
-            {# ── Right panel: editable fields ── #}
+            {# Right: editable fields #}
             <div class="col-md-6">
-
-              {# ── UPS App ────────────────────────────────────────────── #}
-              {% set app_e   = day_punches | selectattr('source', 'equalto', 'app') | list %}
-              {% set app_in  = app_e | selectattr('type', 'equalto', 'in')  | first | default(none) %}
-              {% set app_out = app_e | selectattr('type', 'equalto', 'out') | first | default(none) %}
-              {% if app_e %}
-              <div class="card mb-3">
-                <div class="card-header py-2 bg-body-secondary">
-                  <span class="fw-semibold small text-uppercase" style="letter-spacing:.05em;">UPS App</span>
-                </div>
-                <div class="card-body py-2 px-3">
-
-                  <div class="mb-2">
-                    <label class="form-label small mb-1">Scheduled</label>
-                    <input type="time" class="form-control form-control-sm" name="scheduled_time"
-                           value="{{ app_e[0].scheduled_time.strftime('%H:%M') if app_e[0].scheduled_time else '' }}">
-                  </div>
-
-                  {% if app_in %}
-                  <div class="mb-2">
-                    <label class="form-label small mb-1">
-                      Punch In
-                      {% if app_in.confidence is not none and app_in.confidence < 0.7 %}
-                      <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">Low {{ (app_in.confidence*100)|round(1) }}%</span>
-                      {% endif %}
-                    </label>
-                    <input type="hidden" name="punch_id" value="{{ app_in.id }}">
-                    <input type="time" class="form-control form-control-sm"
-                           name="time_{{ app_in.id }}" value="{{ app_in.time.strftime('%H:%M') }}" required>
-                  </div>
-                  {% endif %}
-
-                  {% if app_out %}
-                  <div class="mb-2">
-                    <label class="form-label small mb-1">
-                      Punch Out
-                      {% if app_out.confidence is not none and app_out.confidence < 0.7 %}
-                      <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">Low {{ (app_out.confidence*100)|round(1) }}%</span>
-                      {% endif %}
-                    </label>
-                    <input type="hidden" name="punch_id" value="{{ app_out.id }}">
-                    <input type="time" class="form-control form-control-sm"
-                           name="time_{{ app_out.id }}" value="{{ app_out.time.strftime('%H:%M') }}" required>
-                  </div>
-                  {% endif %}
-
-                  <div class="mb-0">
-                    <label class="form-label small mb-1">Daily Total</label>
-                    <input type="time" class="form-control form-control-sm" name="app_daily_total"
-                           value="{{ app_e[0].daily_total_minutes | to_hhmm }}">
-                  </div>
-
-                </div>
+              <div class="mb-2">
+                <label class="form-label small mb-1">Scheduled</label>
+                <input type="time" class="form-control form-control-sm" name="scheduled_time"
+                       value="{{ ap.scheduled_time.strftime('%H:%M') if ap.scheduled_time else '' }}"
+                       placeholder="--:--">
               </div>
-              {% endif %}
-
-              {# ── Official System ─────────────────────────────────────── #}
-              {% set off_e   = day_punches | selectattr('source', 'equalto', 'official') | list %}
-              {% set off_in  = off_e | selectattr('type', 'equalto', 'in')  | first | default(none) %}
-              {% set off_out = off_e | selectattr('type', 'equalto', 'out') | first | default(none) %}
-              {% if off_e %}
-              <div class="card mb-0">
-                <div class="card-header py-2 bg-body-secondary">
-                  <span class="fw-semibold small text-uppercase" style="letter-spacing:.05em;">Official System</span>
-                </div>
-                <div class="card-body py-2 px-3">
-
-                  {% if off_in %}
-                  <div class="mb-2">
-                    <label class="form-label small mb-1">
-                      Start Time
-                      {% if off_in.confidence is not none and off_in.confidence < 0.7 %}
-                      <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">Low {{ (off_in.confidence*100)|round(1) }}%</span>
-                      {% endif %}
-                    </label>
-                    <input type="hidden" name="punch_id" value="{{ off_in.id }}">
-                    <input type="time" class="form-control form-control-sm"
-                           name="time_{{ off_in.id }}" value="{{ off_in.time.strftime('%H:%M') }}" required>
-                  </div>
+              <div class="mb-2">
+                <label class="form-label small mb-1">
+                  Punch In
+                  {% if ap.confidence is not none and ap.confidence < 0.7 %}
+                  <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">
+                    Low {{ (ap.confidence * 100) | round(1) }}%
+                  </span>
                   {% endif %}
-
-                  {% if off_out %}
-                  <div class="mb-2">
-                    <label class="form-label small mb-1">
-                      End Time
-                      {% if off_out.confidence is not none and off_out.confidence < 0.7 %}
-                      <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">Low {{ (off_out.confidence*100)|round(1) }}%</span>
-                      {% endif %}
-                    </label>
-                    <input type="hidden" name="punch_id" value="{{ off_out.id }}">
-                    <input type="time" class="form-control form-control-sm"
-                           name="time_{{ off_out.id }}" value="{{ off_out.time.strftime('%H:%M') }}" required>
-                  </div>
-                  {% endif %}
-
-                  <div class="mb-0">
-                    <label class="form-label small mb-1">Total Hours</label>
-                    <input type="time" class="form-control form-control-sm" name="official_daily_total"
-                           value="{{ off_e[0].daily_total_minutes | to_hhmm }}">
-                  </div>
-
-                </div>
+                </label>
+                <input type="time" class="form-control form-control-sm" name="punch_in"
+                       value="{{ ap.punch_in.strftime('%H:%M') if ap.punch_in else '' }}"
+                       placeholder="--:--">
               </div>
-              {% endif %}
-
+              <div class="mb-2">
+                <label class="form-label small mb-1">
+                  Punch Out
+                  {% if ap.confidence is not none and ap.confidence < 0.7 %}
+                  <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">
+                    Low {{ (ap.confidence * 100) | round(1) }}%
+                  </span>
+                  {% endif %}
+                </label>
+                <input type="time" class="form-control form-control-sm" name="punch_out"
+                       value="{{ ap.punch_out.strftime('%H:%M') if ap.punch_out else '' }}"
+                       placeholder="--:--">
+              </div>
+              <div class="mb-0">
+                <label class="form-label small mb-1">Daily Total</label>
+                <input type="time" class="form-control form-control-sm" name="daily_total"
+                       value="{{ ap.daily_total_minutes | to_hhmm }}"
+                       placeholder="--:--">
+              </div>
             </div>
-          </div>{# /row #}
+
+          </div>
         </div>
 
         <div class="modal-footer">
@@ -513,11 +285,103 @@
 </div>
 {% endif %}
 {% endfor %}
-{# ── End edit modals ─────────────────────────────────────────────────────── #}
 
-{# ── End modals ──────────────────────────────────────────────────────────── #}
 
-{# ── Lightbox overlay — click any [data-lightbox] image to zoom, click again to close ── #}
+{# ═══════════════════════════════════════════════════════════════════════════
+   Edit modals — Official System (one per day that has a record)
+════════════════════════════════════════════════════════════════════════════ #}
+{% for day in days %}
+{% set op = official_by_date.get(day.date) %}
+{% if op %}
+<div class="modal fade" id="edit-off-{{ day.date_str }}" tabindex="-1"
+     aria-labelledby="edit-off-label-{{ day.date_str }}" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title" id="edit-off-label-{{ day.date_str }}">
+          Official System &mdash; {{ day.label }}, {{ day.date.strftime('%B') }} {{ day.date.day }}, {{ day.date.year }}
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <form method="POST"
+            action="{{ url_for('calendar.edit_punch', date=day.date_str, source='official') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="modal-body">
+          <div class="row g-3">
+
+            {# Left: screenshot #}
+            <div class="col-md-6">
+              <p class="text-muted text-uppercase mb-2" style="font-size:.7rem;letter-spacing:.05em;">
+                Original Screenshot
+              </p>
+              {% if op.image_path %}
+              <img src="{{ url_for('upload.serve_upload', filename=op.image_path) }}"
+                   class="img-fluid rounded border"
+                   style="cursor:zoom-in;"
+                   data-lightbox
+                   alt="Official System screenshot {{ day.date_str }}">
+              {% else %}
+              <p class="text-muted small fst-italic">No image saved for this record.</p>
+              {% endif %}
+            </div>
+
+            {# Right: editable fields #}
+            <div class="col-md-6">
+              <div class="mb-2">
+                <label class="form-label small mb-1">
+                  Start Time
+                  {% if op.confidence is not none and op.confidence < 0.7 %}
+                  <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">
+                    Low {{ (op.confidence * 100) | round(1) }}%
+                  </span>
+                  {% endif %}
+                </label>
+                <input type="time" class="form-control form-control-sm" name="punch_in"
+                       value="{{ op.punch_in.strftime('%H:%M') if op.punch_in else '' }}"
+                       placeholder="--:--">
+              </div>
+              <div class="mb-2">
+                <label class="form-label small mb-1">
+                  End Time
+                  {% if op.confidence is not none and op.confidence < 0.7 %}
+                  <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">
+                    Low {{ (op.confidence * 100) | round(1) }}%
+                  </span>
+                  {% endif %}
+                </label>
+                <input type="time" class="form-control form-control-sm" name="punch_out"
+                       value="{{ op.punch_out.strftime('%H:%M') if op.punch_out else '' }}"
+                       placeholder="--:--">
+              </div>
+              <div class="mb-0">
+                <label class="form-label small mb-1">Total Hours</label>
+                <input type="time" class="form-control form-control-sm" name="daily_total"
+                       value="{{ op.daily_total_minutes | to_hhmm }}"
+                       placeholder="--:--">
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm"
+                  data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">Save Changes</button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endfor %}
+
+
+{# ── Lightbox overlay ─────────────────────────────────────────────────────── #}
 <div id="lb-overlay"
      style="display:none;position:fixed;inset:0;z-index:2000;
             background:rgba(0,0,0,.88);cursor:zoom-out;

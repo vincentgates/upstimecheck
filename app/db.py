@@ -4,20 +4,38 @@ from datetime import datetime
 db = SQLAlchemy()
 
 
-class Punch(db.Model):
-    __tablename__ = 'punches'
+class AppPunch(db.Model):
+    """One record per worked day — UPS handheld terminal clock-in screenshots."""
+    __tablename__ = 'app_punches'
 
-    id = db.Column(db.Integer, primary_key=True)
-    date = db.Column(db.Date, nullable=False)
-    time = db.Column(db.Time, nullable=False)
-    type = db.Column(db.String(3), nullable=False)   # 'in' or 'out'
-    source = db.Column(db.String(10), nullable=False) # 'app' or 'official'
-    raw_ocr_text = db.Column(db.Text)
-    confidence = db.Column(db.Float)
-    image_path = db.Column(db.String(255))       # filename only, served from uploads/processed/
-    scheduled_time = db.Column(db.Time)          # company-confirmed shift start, from OCR
-    daily_total_minutes = db.Column(db.Integer)  # total worked time per screenshot (OCR-scraped)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    id                  = db.Column(db.Integer, primary_key=True)
+    date                = db.Column(db.Date,    nullable=False)
+    punch_in            = db.Column(db.Time)
+    punch_out           = db.Column(db.Time)
+    scheduled_time      = db.Column(db.Time)
+    daily_total_minutes = db.Column(db.Integer)
+    raw_ocr_text        = db.Column(db.Text)
+    confidence          = db.Column(db.Float)
+    image_path          = db.Column(db.String(255))
+    created_at          = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __repr__(self):
-        return f'<Punch {self.date} {self.time} {self.type} [{self.source}]>'
+        return f'<AppPunch {self.date} in={self.punch_in} out={self.punch_out}>'
+
+
+class OfficialPunch(db.Model):
+    """One record per worked day — UPS official time system (web portal)."""
+    __tablename__ = 'official_punches'
+
+    id                  = db.Column(db.Integer, primary_key=True)
+    date                = db.Column(db.Date,    nullable=False)
+    punch_in            = db.Column(db.Time)
+    punch_out           = db.Column(db.Time)
+    daily_total_minutes = db.Column(db.Integer)
+    raw_ocr_text        = db.Column(db.Text)
+    confidence          = db.Column(db.Float)
+    image_path          = db.Column(db.String(255))
+    created_at          = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<OfficialPunch {self.date} in={self.punch_in} out={self.punch_out}>'

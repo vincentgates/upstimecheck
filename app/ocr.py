@@ -95,34 +95,37 @@ def _page_confidence(img):
 
 def _parse(raw_text, punch_date, confidence):
     """
-    Parse raw OCR text from a UPS "Punch Out Summary" screen into punch dicts.
+    Parse raw OCR text from a UPS "Punch Out Summary" screen.
 
-    Expected layout (official terminal):
-        Punched In      03:54
-        Punched Out     09:15
-        Scheduled       03:45
-        Daily Total     5:30
-    Times are 24-hour with no AM/PM suffix.
-    Date comes from EXIF, not from on-screen text.
-    scheduled_time and daily_total_minutes may be None if not visible in the image.
+    Returns a list with at most one dict (one record per day).
+    punch_in / punch_out may be None if the OCR missed one direction.
+    scheduled_time and daily_total_minutes may be None if not visible.
     """
     scheduled_time = _parse_scheduled(raw_text)
     daily_total_minutes = _parse_daily_total(raw_text)
 
-    punches = []
+    punch_in = None
+    punch_out = None
     for match in _PUNCH_RE.finditer(raw_text):
         direction, time_str = match.groups()
-        punch_time = datetime.strptime(time_str, '%H:%M').time()
-        punches.append({
-            'date':                punch_date,
-            'time':                punch_time,
-            'type':                direction.lower(),
-            'raw_ocr_text':        raw_text,
-            'confidence':          confidence,
-            'scheduled_time':      scheduled_time,
-            'daily_total_minutes': daily_total_minutes,
-        })
-    return punches
+        t = datetime.strptime(time_str, '%H:%M').time()
+        if direction.lower() == 'in':
+            punch_in = t
+        else:
+            punch_out = t
+
+    if punch_in is None and punch_out is None:
+        return []
+
+    return [{
+        'date':                punch_date,
+        'punch_in':            punch_in,
+        'punch_out':           punch_out,
+        'raw_ocr_text':        raw_text,
+        'confidence':          confidence,
+        'scheduled_time':      scheduled_time,
+        'daily_total_minutes': daily_total_minutes,
+    }]
 
 
 def _parse_scheduled(raw_text):
@@ -210,13 +213,13 @@ def _parse_official_weekly(raw_text, confidence):
             except ValueError:
                 pass
 
-        common = {
+        punches.append({
+            'date':                punch_date,
+            'punch_in':            start_time,
+            'punch_out':           end_time,
             'raw_ocr_text':        block.strip(),
             'confidence':          confidence,
-            'scheduled_time':      None,  # not shown on this screen
             'daily_total_minutes': daily_total_minutes,
-        }
-        punches.append({'date': punch_date, 'time': start_time, 'type': 'in',  **common})
-        punches.append({'date': punch_date, 'time': end_time,   'type': 'out', **common})
+        })
 
     return punches
