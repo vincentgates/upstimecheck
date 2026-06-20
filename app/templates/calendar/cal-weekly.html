@@ -380,6 +380,8 @@
                   {% set _ = images_shown.append(punch.image_path) %}
                   <img src="{{ url_for('upload.serve_upload', filename=punch.image_path) }}"
                        class="img-fluid rounded border mb-2"
+                       style="cursor:zoom-in;"
+                       data-lightbox
                        alt="Punch screenshot {{ punch.source }}">
                 {% endif %}
               {% endfor %}
@@ -461,5 +463,45 @@
 {# ── End edit modals ─────────────────────────────────────────────────────── #}
 
 {# ── End modals ──────────────────────────────────────────────────────────── #}
+
+{# ── Lightbox overlay — click any [data-lightbox] image to zoom, click again to close ── #}
+<div id="lb-overlay"
+     style="display:none;position:fixed;inset:0;z-index:2000;
+            background:rgba(0,0,0,.88);cursor:zoom-out;
+            align-items:center;justify-content:center;">
+  <img id="lb-img" src="" alt=""
+       style="max-width:95vw;max-height:95vh;object-fit:contain;border-radius:6px;
+              box-shadow:0 0 40px rgba(0,0,0,.6);">
+</div>
+
+<script>
+(function () {
+  var overlay = document.getElementById('lb-overlay');
+  var lbImg   = document.getElementById('lb-img');
+
+  document.addEventListener('click', function (e) {
+    var img = e.target.closest('[data-lightbox]');
+    if (!img) return;
+    lbImg.src = img.src;
+    lbImg.alt = img.alt;
+    overlay.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  });
+
+  overlay.addEventListener('click', function () {
+    overlay.style.display = 'none';
+    lbImg.src = '';
+    document.body.style.overflow = '';
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && overlay.style.display === 'flex') {
+      overlay.style.display = 'none';
+      lbImg.src = '';
+      document.body.style.overflow = '';
+    }
+  });
+}());
+</script>
 
 {% endblock %}
