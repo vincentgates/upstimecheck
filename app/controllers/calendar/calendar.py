@@ -17,15 +17,18 @@ calendar_bp = Blueprint('calendar', __name__)
 @calendar_bp.route('/cal')
 @calendar_bp.route('/cal/<date>')
 def show_calendar(date=None):
+    today = datetime.today().date()
     if date:
         try:
-            week_end = datetime.strptime(date, '%Y-%m-%d').date()
+            given = datetime.strptime(date, '%Y-%m-%d').date()
         except ValueError:
-            today = datetime.today().date()
-            week_end = today + timedelta((5 - today.weekday()) % 7)
+            given = today
     else:
-        today = datetime.today().date()
-        week_end = today + timedelta((5 - today.weekday()) % 7)
+        given = today
+
+    # Always resolve to the Saturday that ends the week containing `given`,
+    # regardless of which day of the week the URL date falls on.
+    week_end = given + timedelta((5 - given.weekday()) % 7)
 
     week_start = week_end - timedelta(days=6)
     days = get_week_days(week_start, week_end)
