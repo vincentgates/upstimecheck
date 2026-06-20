@@ -418,6 +418,30 @@
               {% endif %}
               {% endfor %}
 
+              {# ── Day-level fields ── #}
+              {% set ref = day_punches | first %}
+              <hr class="my-3">
+              <p class="text-muted text-uppercase mb-2" style="font-size:.7rem;letter-spacing:.05em;">
+                Day Totals
+              </p>
+
+              <div class="mb-2">
+                <label class="form-label small mb-1">Scheduled Start</label>
+                <input type="time" class="form-control form-control-sm"
+                       name="scheduled_time"
+                       value="{{ ref.scheduled_time.strftime('%H:%M') if ref.scheduled_time else '' }}">
+              </div>
+
+              <div class="mb-2">
+                <label class="form-label small mb-1">
+                  Daily Total <span class="text-muted fw-normal">(system figure)</span>
+                </label>
+                <input type="time" class="form-control form-control-sm"
+                       name="daily_total"
+                       value="{{ ref.daily_total_minutes | to_hhmm }}">
+                <div class="form-text">H:MM — e.g. 5:30 for 5 hours 30 minutes. Leave blank to clear.</div>
+              </div>
+
             </div>
           </div>{# /row #}
         </div>

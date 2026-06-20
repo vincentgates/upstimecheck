@@ -41,6 +41,14 @@ def create_app(config_filename=None):
         h, m = divmod(int(minutes), 60)
         return f'{h}h {m:02d}m'
 
+    @app.template_filter('to_hhmm')
+    def to_hhmm(minutes):
+        """Convert integer minutes to HH:MM string for use in <input type='time'>."""
+        if minutes is None:
+            return ''
+        h, m = divmod(int(minutes), 60)
+        return f'{h:02d}:{m:02d}'
+
     with app.app_context():
         db.create_all()
 

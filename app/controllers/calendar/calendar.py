@@ -63,6 +63,7 @@ def show_calendar(date=None):
 
 @calendar_bp.route('/cal/<date>/edit', methods=['POST'])
 def edit_punches(date):
+    # ── Per-punch time edits ──────────────────────────────────────────────────
     punch_ids = request.form.getlist('punch_id')
     for pid in punch_ids:
         time_str = request.form.get(f'time_{pid}', '').strip()
@@ -74,6 +75,41 @@ def edit_punches(date):
                 punch.time = datetime.strptime(time_str, '%H:%M').time()
             except ValueError:
                 flash(f'Invalid time value "{time_str}" — skipped.', 'warning')
+
+    # ── Day-level fields (scheduled time + daily total) ───────────────────────
+    # Applied to every punch on this date so the values stay consistent.
+    try:
+        target_date = datetime.strptime(date, '%Y-%m-%d').date()
+    except ValueError:
+        target_date = None
+
+    if target_date:
+        sched_str = request.form.get('scheduled_time', '').strip()
+        total_str = request.form.get('daily_total', '').strip()
+
+        new_sched = None
+        if sched_str:
+            try:
+                new_sched = datetime.strptime(sched_str, '%H:%M').time()
+            except ValueError:
+                flash('Invalid scheduled time — use HH:MM format.', 'warning')
+                sched_str = None  # skip update
+
+        new_total = None
+        if total_str:
+            try:
+                h, m = total_str.split(':')
+                new_total = int(h) * 60 + int(m)
+            except (ValueError, AttributeError):
+                flash('Invalid daily total — use H:MM format (e.g. 5:30).', 'warning')
+                total_str = None  # skip update
+
+        for p in Punch.query.filter_by(date=target_date).all():
+            if sched_str is not None:   # submitted (even if empty = clear)
+                p.scheduled_time = new_sched
+            if total_str is not None:   # submitted (even if empty = clear)
+                p.daily_total_minutes = new_total
+
     db.session.commit()
     flash('Punches updated.', 'success')
     return redirect(url_for('calendar.show_calendar', date=date))
