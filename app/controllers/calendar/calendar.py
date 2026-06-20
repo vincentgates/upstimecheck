@@ -66,41 +66,68 @@ def show_calendar(date=None):
     )
 
 
-@calendar_bp.route('/cal/<date>/edit/<source>', methods=['POST'])
-def edit_punch(date, source):
-    Model = _SOURCE_MODEL.get(source)
-    if not Model:
-        flash('Invalid source.', 'danger')
-        return redirect(url_for('calendar.show_calendar', date=date))
-
+@calendar_bp.route('/cal/<date>/edit', methods=['POST'])
+def edit_punches(date):
+    """Update both AppPunch and OfficialPunch for the given date from one form submission."""
     try:
         target_date = datetime.strptime(date, '%Y-%m-%d').date()
     except ValueError:
         flash('Invalid date.', 'danger')
         return redirect(url_for('calendar.show_calendar'))
 
-    p = Model.query.filter_by(date=target_date).first()
-    if not p:
-        flash('Record not found.', 'warning')
-        return redirect(url_for('calendar.show_calendar', date=date))
+    ap = AppPunch.query.filter_by(date=target_date).first()
+    op = OfficialPunch.query.filter_by(date=target_date).first()
 
     try:
-        p.punch_in  = _parse_time(request.form.get('punch_in',  ''))
-        p.punch_out = _parse_time(request.form.get('punch_out', ''))
-        p.daily_total_minutes = _parse_total(request.form.get('daily_total', ''))
-        if source == 'app':
-            p.scheduled_time = _parse_time(request.form.get('scheduled_time', ''))
+        if ap:
+            ap.scheduled_time      = _parse_time(request.form.get('scheduled_time', ''))
+            ap.punch_in            = _parse_time(request.form.get('app_punch_in',   ''))
+            ap.punch_out           = _parse_time(request.form.get('app_punch_out',  ''))
+            ap.daily_total_minutes = _parse_total(request.form.get('app_daily_total', ''))
+        if op:
+            op.punch_in            = _parse_time(request.form.get('off_punch_in',   ''))
+            op.punch_out           = _parse_time(request.form.get('off_punch_out',  ''))
+            op.daily_total_minutes = _parse_total(request.form.get('off_daily_total', ''))
     except ValueError as e:
         flash(f'Invalid value: {e}', 'warning')
         return redirect(url_for('calendar.show_calendar', date=date))
 
     db.session.commit()
-    flash('Record updated.', 'success')
+    flash('Punches updated.', 'success')
+    return redirect(url_for('calendar.show_calendar', date=date))
+
+
+@calendar_bp.route('/cal/<date>/delete', methods=['POST'])
+def delete_day(date):
+    """Delete all records for a date from both tables."""
+    try:
+        target_date = datetime.strptime(date, '%Y-%m-%d').date()
+    except ValueError:
+        flash('Invalid date.', 'danger')
+        return redirect(url_for('calendar.show_calendar'))
+
+    images_to_check = set()
+    for Model in (AppPunch, OfficialPunch):
+        records = Model.query.filter_by(date=target_date).all()
+        for r in records:
+            if r.image_path:
+                images_to_check.add(r.image_path)
+            db.session.delete(r)
+    db.session.commit()
+
+    for img in images_to_check:
+        if not _image_still_referenced(img):
+            full = os.path.join(_UPLOAD_DIR, img)
+            if os.path.exists(full):
+                os.remove(full)
+
+    flash(f'All records for {target_date.strftime("%b %d")} deleted.', 'success')
     return redirect(url_for('calendar.show_calendar', date=date))
 
 
 @calendar_bp.route('/cal/<date>/delete/<source>', methods=['POST'])
 def delete_punch(date, source):
+    """Delete a single source's record for a date (used from Edit modal)."""
     Model = _SOURCE_MODEL.get(source)
     if not Model:
         flash('Invalid source.', 'danger')
