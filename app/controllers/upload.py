@@ -51,20 +51,6 @@ def upload():
                 flash('Invalid date format.', 'danger')
                 return redirect(url_for('upload.upload'))
 
-        # If records already exist for this date + source, replace them so re-uploading
-        # always gives a clean result with no duplicates.
-        if fallback_date:
-            stale = Punch.query.filter_by(date=fallback_date, source=source).all()
-            if stale:
-                orphaned_images = {p.image_path for p in stale if p.image_path}
-                for p in stale:
-                    db.session.delete(p)
-                db.session.commit()
-                for img in orphaned_images:
-                    full = os.path.join(_UPLOAD_DIR, img)
-                    if os.path.exists(full):
-                        os.remove(full)
-
         try:
             image_filename = _save_display_copy(tmp_path, source, ext)
             saved_path = os.path.join(_UPLOAD_DIR, image_filename)
@@ -84,12 +70,35 @@ def upload():
             )
             return redirect(url_for('upload.upload'))
 
+        # Replace existing records for every date found in this upload.
+        # Works for single-day (app) and multi-day (official weekly) uploads alike.
+        dates_found = list({p['date'] for p in punches})
+        stale = Punch.query.filter(
+            Punch.source == source,
+            Punch.date.in_(dates_found)
+        ).all()
+        if stale:
+            orphaned_images = {p.image_path for p in stale if p.image_path}
+            for p in stale:
+                db.session.delete(p)
+            db.session.commit()
+            for img_file in orphaned_images:
+                full = os.path.join(_UPLOAD_DIR, img_file)
+                if os.path.exists(full):
+                    os.remove(full)
+
         for data in punches:
             db.session.add(Punch(source=source, image_path=image_filename, **data))
         db.session.commit()
 
-        flash(f'Saved {len(punches)} punch(es) from {source} screenshot.', 'success')
-        return redirect(url_for('calendar.show_calendar'))
+        first_date = min(dates_found)
+        flash(
+            f'Saved {len(punches)} punch(es) across {len(dates_found)} day(s) '
+            f'from {source} screenshot.',
+            'success'
+        )
+        return redirect(url_for('calendar.show_calendar',
+                                date=first_date.strftime('%Y-%m-%d')))
 
     return render_template('upload/upload.html')
 

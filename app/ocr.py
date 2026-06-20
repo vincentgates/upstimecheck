@@ -10,13 +10,25 @@ from PIL import Image, ImageEnhance
 if platform.system() == 'Windows':
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
-# \s* (not \s+) handles "Punchedout" with no space — OCR drop on photo-of-screen
-# [^\d]{0,10} absorbs junk between label and time e.g. "Punched Out), 09:15"
-_PUNCH_RE      = re.compile(r'Punched\s*(In|Out)[^\d]{0,10}(\d{1,2}:\d{2})', re.IGNORECASE)
-# "Sched[uled] 03:45" — company-confirmed shift start printed on terminal screen
-_SCHED_RE      = re.compile(r'Sched(?:uled)?[^\d]{0,15}(\d{1,2}:\d{2})', re.IGNORECASE)
-# "Daily Total 5:30" / "Total 05:30" — total hours:minutes shown by the terminal
+# ── UPS app / handheld terminal regexes ──────────────────────────────────────
+# \s* handles "Punchedout" (no space) — common OCR drop on photo-of-screen
+_PUNCH_RE       = re.compile(r'Punched\s*(In|Out)[^\d]{0,10}(\d{1,2}:\d{2})', re.IGNORECASE)
+_SCHED_RE       = re.compile(r'Sched(?:uled)?[^\d]{0,15}(\d{1,2}:\d{2})', re.IGNORECASE)
 _DAILY_TOTAL_RE = re.compile(r'(?:Daily\s+)?Total[^\d]{0,20}(\d+):(\d{2})', re.IGNORECASE)
+
+# ── UPS official weekly time system (UPS.com Microsoft portal) ────────────────
+# Format per day block:
+#   Tue 06/16/2026
+#   PAY ACTUAL  132.53
+#   Start Time: 4.17   Pay Rate: 0.00
+#   End Time:   9.48   Total Hours: 5.31
+# Times are DECIMAL HOURS — 4.17 = 4h 10m (0.17 × 60).
+# An asterisk on Start Time (e.g. "4.12*") means the worker punched in early.
+_OFF_DATE_RE  = re.compile(r'(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{2}/\d{2}/\d{4})', re.IGNORECASE)
+_OFF_PAY_RE   = re.compile(r'PAY\s+ACTUAL', re.IGNORECASE)
+_OFF_START_RE = re.compile(r'Start\s+Time:\s*([\d.]+)(\*)?', re.IGNORECASE)
+_OFF_END_RE   = re.compile(r'End\s+Time:\s*([\d.]+)', re.IGNORECASE)
+_OFF_TOTAL_RE = re.compile(r'Total\s+Hours:\s*([\d.]+)', re.IGNORECASE)
 
 _EXIF_DATE_TAGS = (36867, 36868, 306)  # DateTimeOriginal, DateTimeDigitized, DateTime
 _TARGET_WIDTH = 1600  # downsample to this before OCR — Tesseract chokes on 8K images
@@ -26,18 +38,22 @@ def extract_punches(image_path, source, fallback_date=None):
     """
     OCR a screenshot and return a list of punch dicts ready for DB insert.
 
-    Each dict contains: date, time, type, raw_ocr_text, confidence.
-    Caller is responsible for adding source and creating Punch objects.
-    fallback_date is used when EXIF is unavailable (e.g. screenshots with stripped metadata).
-    Returns [] if no date can be determined.
+    source='app'      — UPS handheld terminal photo; date from EXIF or fallback_date.
+    source='official' — UPS weekly web portal screenshot; dates parsed from on-screen
+                        text (multiple days per image). fallback_date is ignored.
+
+    Returns [] if nothing useful could be parsed.
     """
+    img = _preprocess(image_path, source)
+    raw_text = pytesseract.image_to_string(img, config='--psm 6')
+    confidence = _page_confidence(img)
+
+    if source == 'official':
+        return _parse_official_weekly(raw_text, confidence)
+
     punch_date = _exif_date(image_path) or fallback_date
     if punch_date is None:
         return []
-
-    img = _preprocess(image_path)
-    raw_text = pytesseract.image_to_string(img, config='--psm 6')
-    confidence = _page_confidence(img)
     return _parse(raw_text, punch_date, confidence)
 
 
@@ -55,13 +71,14 @@ def _exif_date(image_path):
     return None
 
 
-def _preprocess(image_path):
+def _preprocess(image_path, source='app'):
     img = Image.open(image_path)
     w, h = img.size
-    # Trim phone bezel and empty space below the EXIT button so the card content
-    # fills the frame — without this the teal time boxes are too small for Tesseract
-    img = img.crop((int(w * 0.03), int(h * 0.08), int(w * 0.97), int(h * 0.75)))
-    # Downscale to target width — upscaling an 8K image breaks Tesseract
+    if source == 'app':
+        # Trim phone bezel and empty space below the EXIT button so the card
+        # content fills the frame — critical for 8K phone photos of the terminal
+        img = img.crop((int(w * 0.03), int(h * 0.08), int(w * 0.97), int(h * 0.75)))
+    # Downscale wide images — Tesseract chokes on 8K+ widths
     if img.width > _TARGET_WIDTH:
         scale = _TARGET_WIDTH / img.width
         img = img.resize((int(img.width * scale), int(img.height * scale)), Image.LANCZOS)
@@ -120,3 +137,86 @@ def _parse_daily_total(raw_text):
     if m:
         return int(m.group(1)) * 60 + int(m.group(2))
     return None
+
+
+# ── Official weekly portal parser ─────────────────────────────────────────────
+
+def _decimal_hours_to_time(val_str):
+    """Convert decimal-hours string (e.g. '4.17') to datetime.time.
+    UPS portal stores times as decimal hours: 4.17 = 4h 10.2m → 04:10.
+    """
+    val = float(str(val_str).rstrip('*').strip())
+    hours = int(val)
+    minutes = round((val - hours) * 60)
+    if minutes >= 60:
+        hours += 1
+        minutes -= 60
+    return datetime.strptime(f'{hours:02d}:{minutes:02d}', '%H:%M').time()
+
+
+def _parse_official_weekly(raw_text, confidence):
+    """
+    Parse the UPS official weekly time system (UPS.com Microsoft portal).
+
+    One screenshot covers a full week. Each day block looks like:
+        Tue 06/16/2026
+        PAY ACTUAL  132.53
+        Start Time: 4.17   Pay Rate: 0.00
+        End Time:   9.48   Total Hours: 5.31
+
+    Days with 'No Card' (no work) are skipped.
+    An asterisk on Start Time (e.g. 4.12*) means the system detected an early punch —
+    the worker arrived before the scheduled start. This is preserved in raw_ocr_text.
+    Times are converted from decimal hours to HH:MM.
+    Returns a flat list of punch dicts across all worked days found.
+    """
+    punches = []
+
+    # Split text into per-day blocks on day-of-week + date lines
+    blocks = re.split(
+        r'(?=(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{2}/\d{2}/\d{4})',
+        raw_text, flags=re.IGNORECASE
+    )
+
+    for block in blocks:
+        date_m = _OFF_DATE_RE.search(block)
+        if not date_m:
+            continue
+        if not _OFF_PAY_RE.search(block):
+            continue  # No Card — day off, skip
+
+        try:
+            punch_date = datetime.strptime(date_m.group(1), '%m/%d/%Y').date()
+        except ValueError:
+            continue
+
+        start_m = _OFF_START_RE.search(block)
+        end_m   = _OFF_END_RE.search(block)
+        total_m = _OFF_TOTAL_RE.search(block)
+
+        if not start_m or not end_m:
+            continue
+
+        try:
+            start_time = _decimal_hours_to_time(start_m.group(1))
+            end_time   = _decimal_hours_to_time(end_m.group(1))
+        except (ValueError, AttributeError):
+            continue
+
+        daily_total_minutes = None
+        if total_m:
+            try:
+                daily_total_minutes = round(float(total_m.group(1)) * 60)
+            except ValueError:
+                pass
+
+        common = {
+            'raw_ocr_text':        block.strip(),
+            'confidence':          confidence,
+            'scheduled_time':      None,  # not shown on this screen
+            'daily_total_minutes': daily_total_minutes,
+        }
+        punches.append({'date': punch_date, 'time': start_time, 'type': 'in',  **common})
+        punches.append({'date': punch_date, 'time': end_time,   'type': 'out', **common})
+
+    return punches
