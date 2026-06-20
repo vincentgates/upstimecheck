@@ -1,3 +1,4 @@
+import os
 from collections import defaultdict
 from datetime import datetime, timedelta
 
@@ -5,6 +6,10 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from app.db import db, Punch
 from .models import get_week_days, check_discrepancies, get_daily_summaries
+
+_UPLOAD_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), '..', '..', '..', 'uploads', 'processed')
+)
 
 calendar_bp = Blueprint('calendar', __name__)
 
@@ -71,11 +76,25 @@ def edit_punches(date):
     return redirect(url_for('calendar.show_calendar', date=date))
 
 
-@calendar_bp.route('/punch/<int:punch_id>/delete', methods=['POST'])
-def delete_punch(punch_id):
-    punch = Punch.query.get_or_404(punch_id)
-    date_str = punch.date.strftime('%Y-%m-%d')
-    db.session.delete(punch)
+@calendar_bp.route('/cal/<date>/delete', methods=['POST'])
+def delete_day(date):
+    try:
+        target_date = datetime.strptime(date, '%Y-%m-%d').date()
+    except ValueError:
+        flash('Invalid date.', 'danger')
+        return redirect(url_for('calendar.show_calendar'))
+
+    punches = Punch.query.filter_by(date=target_date).all()
+    image_paths = {p.image_path for p in punches if p.image_path}
+
+    for p in punches:
+        db.session.delete(p)
     db.session.commit()
-    flash('Punch deleted.', 'success')
-    return redirect(url_for('calendar.show_calendar', date=date_str))
+
+    for img in image_paths:
+        full = os.path.join(_UPLOAD_DIR, img)
+        if os.path.exists(full):
+            os.remove(full)
+
+    flash(f'All records for {target_date.strftime("%b %d")} deleted.', 'success')
+    return redirect(url_for('calendar.show_calendar', date=date))

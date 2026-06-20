@@ -33,8 +33,8 @@
   <div class="accordion-item">
 
     {# ── Accordion header ──────────────────────────────────────────────── #}
-    <h2 class="accordion-header">
-      <button class="accordion-button collapsed" type="button"
+    <h2 class="accordion-header d-flex align-items-stretch">
+      <button class="accordion-button collapsed flex-fill" type="button"
               data-bs-toggle="collapse"
               data-bs-target="#{{ day.collapse_id }}"
               aria-expanded="false"
@@ -72,6 +72,16 @@
         {% endif %}
 
       </button>
+      {% if day_punches %}
+      <form method="POST"
+            action="{{ url_for('calendar.delete_day', date=day.date_str) }}"
+            class="d-flex align-items-center px-2 border-start"
+            onsubmit="return confirm('Delete all records for {{ day.label }} ({{ day.date_str }})?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-sm btn-outline-danger border-0"
+                title="Delete all records for this day">&#128465;</button>
+      </form>
+      {% endif %}
     </h2>
 
     {# ── Accordion body ────────────────────────────────────────────────── #}
@@ -399,20 +409,10 @@
                   {% endif %}
                 </label>
                 <input type="hidden" name="punch_id" value="{{ punch.id }}">
-                <div class="d-flex gap-2 align-items-center">
-                  <input type="time" class="form-control form-control-sm flex-grow-1"
-                         name="time_{{ punch.id }}"
-                         value="{{ punch.time.strftime('%H:%M') }}"
-                         required>
-                  <form method="POST"
-                        action="{{ url_for('calendar.delete_punch', punch_id=punch.id) }}"
-                        class="m-0"
-                        onsubmit="return confirm('Delete this {{ punch.type }} punch?')">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-outline-danger btn-sm"
-                            title="Delete punch">&#128465;</button>
-                  </form>
-                </div>
+                <input type="time" class="form-control form-control-sm"
+                       name="time_{{ punch.id }}"
+                       value="{{ punch.time.strftime('%H:%M') }}"
+                       required>
               </div>
               {% endfor %}
               {% endif %}

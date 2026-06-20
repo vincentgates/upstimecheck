@@ -51,18 +51,19 @@ def upload():
                 flash('Invalid date format.', 'danger')
                 return redirect(url_for('upload.upload'))
 
-        # Block duplicate uploads — same date + source already in DB means stale data.
-        # User should delete existing punches via the Edit modal before re-uploading.
+        # If records already exist for this date + source, replace them so re-uploading
+        # always gives a clean result with no duplicates.
         if fallback_date:
-            existing = Punch.query.filter_by(date=fallback_date, source=source).first()
-            if existing:
-                os.unlink(tmp_path)
-                flash(
-                    f'{source.capitalize()} punches for {fallback_date} already exist. '
-                    'Open the Edit modal for that day and delete them before re-uploading.',
-                    'warning'
-                )
-                return redirect(url_for('upload.upload'))
+            stale = Punch.query.filter_by(date=fallback_date, source=source).all()
+            if stale:
+                orphaned_images = {p.image_path for p in stale if p.image_path}
+                for p in stale:
+                    db.session.delete(p)
+                db.session.commit()
+                for img in orphaned_images:
+                    full = os.path.join(_UPLOAD_DIR, img)
+                    if os.path.exists(full):
+                        os.remove(full)
 
         try:
             image_filename = _save_display_copy(tmp_path, source, ext)
