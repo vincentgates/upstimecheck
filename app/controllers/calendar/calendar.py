@@ -69,3 +69,13 @@ def edit_punches(date):
     db.session.commit()
     flash('Punches updated.', 'success')
     return redirect(url_for('calendar.show_calendar', date=date))
+
+
+@calendar_bp.route('/punch/<int:punch_id>/delete', methods=['POST'])
+def delete_punch(punch_id):
+    punch = Punch.query.get_or_404(punch_id)
+    date_str = punch.date.strftime('%Y-%m-%d')
+    db.session.delete(punch)
+    db.session.commit()
+    flash('Punch deleted.', 'success')
+    return redirect(url_for('calendar.show_calendar', date=date_str))

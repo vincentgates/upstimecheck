@@ -51,6 +51,19 @@ def upload():
                 flash('Invalid date format.', 'danger')
                 return redirect(url_for('upload.upload'))
 
+        # Block duplicate uploads — same date + source already in DB means stale data.
+        # User should delete existing punches via the Edit modal before re-uploading.
+        if fallback_date:
+            existing = Punch.query.filter_by(date=fallback_date, source=source).first()
+            if existing:
+                os.unlink(tmp_path)
+                flash(
+                    f'{source.capitalize()} punches for {fallback_date} already exist. '
+                    'Open the Edit modal for that day and delete them before re-uploading.',
+                    'warning'
+                )
+                return redirect(url_for('upload.upload'))
+
         try:
             image_filename = _save_display_copy(tmp_path, source, ext)
             saved_path = os.path.join(_UPLOAD_DIR, image_filename)
@@ -59,7 +72,8 @@ def upload():
             flash(f'OCR error: {e}', 'danger')
             return redirect(url_for('upload.upload'))
         finally:
-            os.unlink(tmp_path)
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
         if not punches:
             flash(

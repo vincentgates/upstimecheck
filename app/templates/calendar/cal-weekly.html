@@ -399,10 +399,20 @@
                   {% endif %}
                 </label>
                 <input type="hidden" name="punch_id" value="{{ punch.id }}">
-                <input type="time" class="form-control form-control-sm"
-                       name="time_{{ punch.id }}"
-                       value="{{ punch.time.strftime('%H:%M') }}"
-                       required>
+                <div class="d-flex gap-2 align-items-center">
+                  <input type="time" class="form-control form-control-sm flex-grow-1"
+                         name="time_{{ punch.id }}"
+                         value="{{ punch.time.strftime('%H:%M') }}"
+                         required>
+                  <form method="POST"
+                        action="{{ url_for('calendar.delete_punch', punch_id=punch.id) }}"
+                        class="m-0"
+                        onsubmit="return confirm('Delete this {{ punch.type }} punch?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-outline-danger btn-sm"
+                            title="Delete punch">&#128465;</button>
+                  </form>
+                </div>
               </div>
               {% endfor %}
               {% endif %}
