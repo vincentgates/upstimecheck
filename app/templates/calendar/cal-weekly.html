@@ -392,57 +392,110 @@
 
             {# ── Right panel: editable fields ── #}
             <div class="col-md-6">
-              <p class="text-muted text-uppercase mb-2" style="font-size:.7rem;letter-spacing:.05em;">
-                Correct Punch Times
-              </p>
 
-              {% for source_key, source_label in [('app', 'UPS App'), ('official', 'Official System')] %}
-              {% set src = day_punches | selectattr('source', 'equalto', source_key) | list %}
-              {% if src %}
-              <p class="fw-semibold small mb-1 mt-3">{{ source_label }}</p>
-              {% for punch in src | sort(attribute='time') %}
-              <div class="mb-2">
-                <label class="form-label small text-capitalize mb-1">
-                  {{ punch.type }}
-                  {% if punch.confidence is not none and punch.confidence < 0.7 %}
-                    <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">
-                      Low confidence {{ (punch.confidence * 100) | round(1) }}%
-                    </span>
+              {# ── UPS App ────────────────────────────────────────────── #}
+              {% set app_e   = day_punches | selectattr('source', 'equalto', 'app') | list %}
+              {% set app_in  = app_e | selectattr('type', 'equalto', 'in')  | first | default(none) %}
+              {% set app_out = app_e | selectattr('type', 'equalto', 'out') | first | default(none) %}
+              {% if app_e %}
+              <div class="card mb-3">
+                <div class="card-header py-2 bg-body-secondary">
+                  <span class="fw-semibold small text-uppercase" style="letter-spacing:.05em;">UPS App</span>
+                </div>
+                <div class="card-body py-2 px-3">
+
+                  <div class="mb-2">
+                    <label class="form-label small mb-1">Scheduled</label>
+                    <input type="time" class="form-control form-control-sm" name="scheduled_time"
+                           value="{{ app_e[0].scheduled_time.strftime('%H:%M') if app_e[0].scheduled_time else '' }}">
+                  </div>
+
+                  {% if app_in %}
+                  <div class="mb-2">
+                    <label class="form-label small mb-1">
+                      Punch In
+                      {% if app_in.confidence is not none and app_in.confidence < 0.7 %}
+                      <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">Low {{ (app_in.confidence*100)|round(1) }}%</span>
+                      {% endif %}
+                    </label>
+                    <input type="hidden" name="punch_id" value="{{ app_in.id }}">
+                    <input type="time" class="form-control form-control-sm"
+                           name="time_{{ app_in.id }}" value="{{ app_in.time.strftime('%H:%M') }}" required>
+                  </div>
                   {% endif %}
-                </label>
-                <input type="hidden" name="punch_id" value="{{ punch.id }}">
-                <input type="time" class="form-control form-control-sm"
-                       name="time_{{ punch.id }}"
-                       value="{{ punch.time.strftime('%H:%M') }}"
-                       required>
+
+                  {% if app_out %}
+                  <div class="mb-2">
+                    <label class="form-label small mb-1">
+                      Punch Out
+                      {% if app_out.confidence is not none and app_out.confidence < 0.7 %}
+                      <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">Low {{ (app_out.confidence*100)|round(1) }}%</span>
+                      {% endif %}
+                    </label>
+                    <input type="hidden" name="punch_id" value="{{ app_out.id }}">
+                    <input type="time" class="form-control form-control-sm"
+                           name="time_{{ app_out.id }}" value="{{ app_out.time.strftime('%H:%M') }}" required>
+                  </div>
+                  {% endif %}
+
+                  <div class="mb-0">
+                    <label class="form-label small mb-1">Daily Total</label>
+                    <input type="time" class="form-control form-control-sm" name="app_daily_total"
+                           value="{{ app_e[0].daily_total_minutes | to_hhmm }}">
+                  </div>
+
+                </div>
               </div>
-              {% endfor %}
               {% endif %}
-              {% endfor %}
 
-              {# ── Day-level fields ── #}
-              {% set ref = day_punches | first %}
-              <hr class="my-3">
-              <p class="text-muted text-uppercase mb-2" style="font-size:.7rem;letter-spacing:.05em;">
-                Day Totals
-              </p>
+              {# ── Official System ─────────────────────────────────────── #}
+              {% set off_e   = day_punches | selectattr('source', 'equalto', 'official') | list %}
+              {% set off_in  = off_e | selectattr('type', 'equalto', 'in')  | first | default(none) %}
+              {% set off_out = off_e | selectattr('type', 'equalto', 'out') | first | default(none) %}
+              {% if off_e %}
+              <div class="card mb-0">
+                <div class="card-header py-2 bg-body-secondary">
+                  <span class="fw-semibold small text-uppercase" style="letter-spacing:.05em;">Official System</span>
+                </div>
+                <div class="card-body py-2 px-3">
 
-              <div class="mb-2">
-                <label class="form-label small mb-1">Scheduled Start</label>
-                <input type="time" class="form-control form-control-sm"
-                       name="scheduled_time"
-                       value="{{ ref.scheduled_time.strftime('%H:%M') if ref.scheduled_time else '' }}">
+                  {% if off_in %}
+                  <div class="mb-2">
+                    <label class="form-label small mb-1">
+                      Start Time
+                      {% if off_in.confidence is not none and off_in.confidence < 0.7 %}
+                      <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">Low {{ (off_in.confidence*100)|round(1) }}%</span>
+                      {% endif %}
+                    </label>
+                    <input type="hidden" name="punch_id" value="{{ off_in.id }}">
+                    <input type="time" class="form-control form-control-sm"
+                           name="time_{{ off_in.id }}" value="{{ off_in.time.strftime('%H:%M') }}" required>
+                  </div>
+                  {% endif %}
+
+                  {% if off_out %}
+                  <div class="mb-2">
+                    <label class="form-label small mb-1">
+                      End Time
+                      {% if off_out.confidence is not none and off_out.confidence < 0.7 %}
+                      <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">Low {{ (off_out.confidence*100)|round(1) }}%</span>
+                      {% endif %}
+                    </label>
+                    <input type="hidden" name="punch_id" value="{{ off_out.id }}">
+                    <input type="time" class="form-control form-control-sm"
+                           name="time_{{ off_out.id }}" value="{{ off_out.time.strftime('%H:%M') }}" required>
+                  </div>
+                  {% endif %}
+
+                  <div class="mb-0">
+                    <label class="form-label small mb-1">Total Hours</label>
+                    <input type="time" class="form-control form-control-sm" name="official_daily_total"
+                           value="{{ off_e[0].daily_total_minutes | to_hhmm }}">
+                  </div>
+
+                </div>
               </div>
-
-              <div class="mb-2">
-                <label class="form-label small mb-1">
-                  Daily Total <span class="text-muted fw-normal">(system figure)</span>
-                </label>
-                <input type="time" class="form-control form-control-sm"
-                       name="daily_total"
-                       value="{{ ref.daily_total_minutes | to_hhmm }}">
-                <div class="form-text">H:MM — e.g. 5:30 for 5 hours 30 minutes. Leave blank to clear.</div>
-              </div>
+              {% endif %}
 
             </div>
           </div>{# /row #}
