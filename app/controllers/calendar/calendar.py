@@ -88,6 +88,14 @@ def edit_punches(date):
             op.punch_in            = _parse_time(request.form.get('off_punch_in',   ''))
             op.punch_out           = _parse_time(request.form.get('off_punch_out',  ''))
             op.daily_total_minutes = _parse_total(request.form.get('off_daily_total', ''))
+            op.corrected           = request.form.get('off_corrected') == 'on'
+            pay_code = request.form.get('off_pay_code', '').strip()
+            if pay_code:
+                op.pay_code = pay_code
+            gross = request.form.get('off_gross_pay', '').strip()
+            op.gross_pay = float(gross) if gross else None
+            rate = request.form.get('off_pay_rate', '').strip()
+            op.pay_rate = float(rate) if rate else None
     except ValueError as e:
         flash(f'Invalid value: {e}', 'warning')
         return redirect(url_for('calendar.show_calendar', date=date))

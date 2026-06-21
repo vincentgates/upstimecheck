@@ -17,18 +17,28 @@ _SCHED_RE       = re.compile(r'Sched(?:uled)?[^\d]{0,15}(\d{1,2}:\d{2})', re.IGN
 _DAILY_TOTAL_RE = re.compile(r'(?:Daily\s+)?Total[^\d]{0,20}(\d+):(\d{2})', re.IGNORECASE)
 
 # ── UPS official weekly time system (UPS.com Microsoft portal) ────────────────
-# Format per day block:
+# Format per day block (worked day):
 #   Tue 06/16/2026
+#   Pay Code: Gross Pay:
 #   PAY ACTUAL  132.53
 #   Start Time: 4.17   Pay Rate: 0.00
 #   End Time:   9.48   Total Hours: 5.31
+#
+# No Card (day off) block:
+#   Sun 06/14/2026
+#   Pay Code: Gross Pay:
+#   No Card  0.00
+#   Start Time: N/A  Pay Rate: 0.00
+#   End Time:   N/A  Total Hours: 0.00
+#
 # Times are DECIMAL HOURS — 4.17 = 4h 10m (0.17 × 60).
-# An asterisk on Start Time (e.g. "4.12*") means the worker punched in early.
-_OFF_DATE_RE  = re.compile(r'(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{2}/\d{2}/\d{4})', re.IGNORECASE)
-_OFF_PAY_RE   = re.compile(r'PAY\s+ACTUAL', re.IGNORECASE)
-_OFF_START_RE = re.compile(r'Start\s+Time:\s*([\d.]+)(\*)?', re.IGNORECASE)
-_OFF_END_RE   = re.compile(r'End\s+Time:\s*([\d.]+)', re.IGNORECASE)
-_OFF_TOTAL_RE = re.compile(r'Total\s+Hours:\s*([\d.]+)', re.IGNORECASE)
+# An asterisk on Start Time (e.g. "4.12*") is stored as corrected=True.
+_OFF_DATE_RE     = re.compile(r'(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{2}/\d{2}/\d{4})', re.IGNORECASE)
+_OFF_PAY_CODE_RE = re.compile(r'(PAY\s+ACTUAL|No\s+Card)\s+([\d.]+)', re.IGNORECASE)
+_OFF_START_RE    = re.compile(r'Start\s+Time:\s*([\d.N/A]+)(\*)?', re.IGNORECASE)
+_OFF_END_RE      = re.compile(r'End\s+Time:\s*([\d.N/A]+)', re.IGNORECASE)
+_OFF_RATE_RE     = re.compile(r'Pay\s+Rate:\s*([\d.]+)', re.IGNORECASE)
+_OFF_TOTAL_RE    = re.compile(r'Total\s+Hours:\s*([\d.]+)', re.IGNORECASE)
 
 _EXIF_DATE_TAGS = (36867, 36868, 306)  # DateTimeOriginal, DateTimeDigitized, DateTime
 _TARGET_WIDTH = 1600  # downsample to this before OCR — Tesseract chokes on 8K images
@@ -161,21 +171,15 @@ def _parse_official_weekly(raw_text, confidence):
     """
     Parse the UPS official weekly time system (UPS.com Microsoft portal).
 
-    One screenshot covers a full week. Each day block looks like:
-        Tue 06/16/2026
-        PAY ACTUAL  132.53
-        Start Time: 4.17   Pay Rate: 0.00
-        End Time:   9.48   Total Hours: 5.31
+    Every calendar day in the screenshot is returned — both worked days
+    (pay_code='PAY ACTUAL') and days off (pay_code='No Card').
+    No Card days have null punch_in / punch_out and 0 daily_total_minutes.
 
-    Days with 'No Card' (no work) are skipped.
-    An asterisk on Start Time (e.g. 4.12*) means the system detected an early punch —
-    the worker arrived before the scheduled start. This is preserved in raw_ocr_text.
-    Times are converted from decimal hours to HH:MM.
-    Returns a flat list of punch dicts across all worked days found.
+    corrected=True when the official system asterisked the start time
+    (footnote: '*Indicates late for that day').
     """
-    punches = []
+    records = []
 
-    # Split text into per-day blocks on day-of-week + date lines
     blocks = re.split(
         r'(?=(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{2}/\d{2}/\d{4})',
         raw_text, flags=re.IGNORECASE
@@ -185,41 +189,81 @@ def _parse_official_weekly(raw_text, confidence):
         date_m = _OFF_DATE_RE.search(block)
         if not date_m:
             continue
-        if not _OFF_PAY_RE.search(block):
-            continue  # No Card — day off, skip
 
         try:
             punch_date = datetime.strptime(date_m.group(1), '%m/%d/%Y').date()
         except ValueError:
             continue
 
+        pay_code_m = _OFF_PAY_CODE_RE.search(block)
+        if not pay_code_m:
+            continue
+
+        pay_code  = re.sub(r'\s+', ' ', pay_code_m.group(1).strip())  # normalise spacing
+        gross_pay = _safe_float(pay_code_m.group(2))
+
+        rate_m  = _OFF_RATE_RE.search(block)
+        pay_rate = _safe_float(rate_m.group(1)) if rate_m else None
+
+        total_m = _OFF_TOTAL_RE.search(block)
+        daily_total_minutes = None
+        if total_m:
+            v = _safe_float(total_m.group(1))
+            daily_total_minutes = round(v * 60) if v is not None else None
+
+        if pay_code.upper() == 'NO CARD':
+            records.append({
+                'date':                punch_date,
+                'pay_code':            'No Card',
+                'gross_pay':           gross_pay,
+                'punch_in':            None,
+                'punch_out':           None,
+                'pay_rate':            pay_rate,
+                'daily_total_minutes': daily_total_minutes if daily_total_minutes is not None else 0,
+                'corrected':           False,
+                'raw_ocr_text':        block.strip(),
+                'confidence':          confidence,
+            })
+            continue
+
+        # Worked day — extract times
         start_m = _OFF_START_RE.search(block)
         end_m   = _OFF_END_RE.search(block)
-        total_m = _OFF_TOTAL_RE.search(block)
 
         if not start_m or not end_m:
             continue
 
+        corrected  = bool(start_m.group(2))
+        start_val  = start_m.group(1).strip()
+        end_val    = end_m.group(1).strip()
+
+        if start_val in ('N/A', 'N', 'A') or end_val in ('N/A', 'N', 'A'):
+            continue  # PAY ACTUAL row but times are N/A — skip
+
         try:
-            start_time = _decimal_hours_to_time(start_m.group(1))
-            end_time   = _decimal_hours_to_time(end_m.group(1))
+            punch_in  = _decimal_hours_to_time(start_val)
+            punch_out = _decimal_hours_to_time(end_val)
         except (ValueError, AttributeError):
             continue
 
-        daily_total_minutes = None
-        if total_m:
-            try:
-                daily_total_minutes = round(float(total_m.group(1)) * 60)
-            except ValueError:
-                pass
-
-        punches.append({
+        records.append({
             'date':                punch_date,
-            'punch_in':            start_time,
-            'punch_out':           end_time,
+            'pay_code':            'PAY ACTUAL',
+            'gross_pay':           gross_pay,
+            'punch_in':            punch_in,
+            'punch_out':           punch_out,
+            'pay_rate':            pay_rate,
+            'daily_total_minutes': daily_total_minutes,
+            'corrected':           corrected,
             'raw_ocr_text':        block.strip(),
             'confidence':          confidence,
-            'daily_total_minutes': daily_total_minutes,
         })
 
-    return punches
+    return records
+
+
+def _safe_float(val):
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None

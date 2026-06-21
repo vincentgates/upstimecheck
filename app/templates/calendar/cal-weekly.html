@@ -25,10 +25,11 @@
 {# ── Weekly accordion ────────────────────────────────────────────────────── #}
 <div class="accordion accordion-flush mb-5" id="WeeklyView">
   {% for day in days %}
-  {% set ap      = app_by_date.get(day.date) %}
-  {% set op      = official_by_date.get(day.date) %}
-  {% set has_data = ap or op %}
-  {% set summary  = daily_summaries.get(day.date) %}
+  {% set ap         = app_by_date.get(day.date) %}
+  {% set op         = official_by_date.get(day.date) %}
+  {% set has_data   = ap or op %}
+  {% set is_day_off = (not ap) and (op and op.pay_code == 'No Card') %}
+  {% set summary    = daily_summaries.get(day.date) %}
 
   <div class="accordion-item">
 
@@ -43,7 +44,9 @@
         {# Status badge #}
         {% set low_conf = (ap and ap.confidence is not none and ap.confidence < 0.7)
                        or (op and op.confidence is not none and op.confidence < 0.7) %}
-        {% if discrepancies.get(day.date) or (summary and summary.total_mismatch) %}
+        {% if is_day_off %}
+          <span class="badge rounded-pill bg-light text-secondary border me-3" title="Day off — No Card">&ndash;</span>
+        {% elif discrepancies.get(day.date) or (summary and summary.total_mismatch) %}
           <span class="badge rounded-pill bg-danger me-3" title="Time discrepancy found">&#9888;</span>
         {% elif low_conf %}
           <span class="badge rounded-pill bg-warning text-dark me-3" title="Low OCR confidence — review recommended">&#9888;</span>
@@ -59,7 +62,7 @@
         </span>
 
         {# Inline punch summary #}
-        {% if has_data %}
+        {% if has_data and not is_day_off %}
         <span class="ms-auto me-3 small text-muted d-none d-md-inline">
           {% set _in  = (ap.punch_in  if ap else none) or (op.punch_in  if op else none) %}
           {% set _out = (ap.punch_out if ap else none) or (op.punch_out if op else none) %}
@@ -135,30 +138,51 @@
               <div class="card h-100">
                 <div class="card-body">
                   <h6 class="card-subtitle mb-2 text-muted text-uppercase" style="font-size:.7rem;letter-spacing:.05em;">Official System</h6>
-                  {% if op.punch_in %}
-                  <div class="d-flex justify-content-between py-1 border-bottom">
-                    <span class="text-muted small">Start Time</span>
-                    <strong>{{ op.punch_in.strftime('%H:%M') }}</strong>
+
+                  {# Pay code + gross pay + corrected flag #}
+                  {% if op.pay_code %}
+                  <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                    <span class="badge {{ 'bg-success' if op.pay_code == 'PAY ACTUAL' else 'bg-secondary' }}">
+                      {{ op.pay_code }}
+                    </span>
+                    {% if op.gross_pay is not none and op.gross_pay > 0 %}
+                    <span class="text-muted small">${{ "%.2f" % op.gross_pay }}</span>
+                    {% endif %}
+                    {% if op.corrected %}
+                    <span class="badge bg-warning text-dark" title="Official system flagged this start time (*Indicates late for that day)">&#9873; Flagged</span>
+                    {% endif %}
                   </div>
                   {% endif %}
-                  {% if op.punch_out %}
-                  <div class="d-flex justify-content-between py-1 border-bottom">
-                    <span class="text-muted small">End Time</span>
-                    <strong>{{ op.punch_out.strftime('%H:%M') }}</strong>
-                  </div>
+
+                  {% if op.pay_code == 'No Card' %}
+                  <div class="text-muted small fst-italic">No punch times on record.</div>
+                  {% else %}
+                    {% if op.punch_in %}
+                    <div class="d-flex justify-content-between py-1 border-bottom">
+                      <span class="text-muted small">Start Time</span>
+                      <strong>{{ op.punch_in.strftime('%H:%M') }}</strong>
+                    </div>
+                    {% endif %}
+                    {% if op.punch_out %}
+                    <div class="d-flex justify-content-between py-1 border-bottom">
+                      <span class="text-muted small">End Time</span>
+                      <strong>{{ op.punch_out.strftime('%H:%M') }}</strong>
+                    </div>
+                    {% endif %}
+                    {% if summary and summary.ocr_total_minutes is not none %}
+                    <div class="d-flex justify-content-between py-1 border-bottom {{ 'text-danger' if summary.total_mismatch }}">
+                      <span class="small">Total Hours <span class="text-muted">(system)</span></span>
+                      <strong>{{ summary.ocr_total_minutes | fmt_minutes }}</strong>
+                    </div>
+                    {% endif %}
+                    {% if summary and summary.calc_total_minutes is not none %}
+                    <div class="d-flex justify-content-between py-1 border-bottom {{ 'text-danger' if summary.total_mismatch }}">
+                      <span class="small">Total Hours <span class="text-muted">(calculated)</span></span>
+                      <strong>{{ summary.calc_total_minutes | fmt_minutes }}</strong>
+                    </div>
+                    {% endif %}
                   {% endif %}
-                  {% if summary and summary.ocr_total_minutes is not none %}
-                  <div class="d-flex justify-content-between py-1 border-bottom {{ 'text-danger' if summary.total_mismatch }}">
-                    <span class="small">Total Hours <span class="text-muted">(system)</span></span>
-                    <strong>{{ summary.ocr_total_minutes | fmt_minutes }}</strong>
-                  </div>
-                  {% endif %}
-                  {% if summary and summary.calc_total_minutes is not none %}
-                  <div class="d-flex justify-content-between py-1 border-bottom {{ 'text-danger' if summary.total_mismatch }}">
-                    <span class="small">Total Hours <span class="text-muted">(calculated)</span></span>
-                    <strong>{{ summary.calc_total_minutes | fmt_minutes }}</strong>
-                  </div>
-                  {% endif %}
+
                   <p class="mt-2 mb-0 text-muted" style="font-size:.75rem;">
                     Confidence {{ (op.confidence * 100) | round(1) }}%
                   </p>
@@ -238,6 +262,20 @@
         {# Official System table #}
         {% if op %}
         <h6 class="text-muted text-uppercase mb-2" style="font-size:.75rem;letter-spacing:.06em;">Official System</h6>
+        {% if op.pay_code %}
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <span class="badge {{ 'bg-success' if op.pay_code == 'PAY ACTUAL' else 'bg-secondary' }}">{{ op.pay_code }}</span>
+          {% if op.gross_pay is not none and op.gross_pay > 0 %}
+          <span class="text-muted small">${{ "%.2f" % op.gross_pay }}</span>
+          {% endif %}
+          {% if op.corrected %}
+          <span class="badge bg-warning text-dark" title="*Indicates late for that day">&#9873; Flagged</span>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% if op.pay_code == 'No Card' %}
+        <p class="text-muted small fst-italic mb-2">No punch times on record for this day.</p>
+        {% else %}
         <table class="table table-sm mb-2">
           <thead class="table-light">
             <tr><th>Type</th><th>Time</th><th class="text-end">Confidence</th></tr>
@@ -255,6 +293,7 @@
             </tr>
           </tbody>
         </table>
+        {% endif %}
         {% endif %}
 
       </div>
@@ -461,6 +500,19 @@
                 <div class="card-body py-2 px-3">
 
                   <div class="mb-2">
+                    <label class="form-label small mb-1">Pay Code</label>
+                    <select class="form-select form-select-sm" name="off_pay_code">
+                      <option value="PAY ACTUAL" {{ 'selected' if op.pay_code == 'PAY ACTUAL' }}>PAY ACTUAL</option>
+                      <option value="No Card"    {{ 'selected' if op.pay_code == 'No Card' }}>No Card</option>
+                    </select>
+                  </div>
+                  <div class="mb-2">
+                    <label class="form-label small mb-1">Gross Pay ($)</label>
+                    <input type="number" step="0.01" class="form-control form-control-sm" name="off_gross_pay"
+                           value="{{ "%.2f" % op.gross_pay if op.gross_pay is not none else '' }}"
+                           placeholder="0.00">
+                  </div>
+                  <div class="mb-2">
                     <label class="form-label small mb-1">Start Time</label>
                     <input type="time" class="form-control form-control-sm" name="off_punch_in"
                            value="{{ op.punch_in.strftime('%H:%M') if op.punch_in else '' }}"
@@ -472,11 +524,24 @@
                            value="{{ op.punch_out.strftime('%H:%M') if op.punch_out else '' }}"
                            placeholder="--:--">
                   </div>
-                  <div class="mb-0">
+                  <div class="mb-2">
+                    <label class="form-label small mb-1">Pay Rate</label>
+                    <input type="number" step="0.01" class="form-control form-control-sm" name="off_pay_rate"
+                           value="{{ "%.2f" % op.pay_rate if op.pay_rate is not none else '' }}"
+                           placeholder="0.00">
+                  </div>
+                  <div class="mb-2">
                     <label class="form-label small mb-1">Total Hours</label>
                     <input type="time" class="form-control form-control-sm" name="off_daily_total"
                            value="{{ op.daily_total_minutes | to_hhmm }}"
                            placeholder="--:--">
+                  </div>
+                  <div class="mb-0 form-check">
+                    <input type="checkbox" class="form-check-input" id="off_corrected_{{ day.date_str }}"
+                           name="off_corrected" {{ 'checked' if op.corrected }}>
+                    <label class="form-check-label small" for="off_corrected_{{ day.date_str }}">
+                      Flagged by system <span class="text-muted">(* on start time)</span>
+                    </label>
                   </div>
 
                 </div>

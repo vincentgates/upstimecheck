@@ -1,6 +1,6 @@
 from app.ocr import extract_punches, _decimal_hours_to_time
 
-path = 'uploads/test/Screenshot_20260619_165701_Chrome.jpg'
+path = 'uploads/test/20260620_193712_official.jpg'
 punches = extract_punches(path, 'official')
 
 print('Found', len(punches), 'days:')
