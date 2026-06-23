@@ -6,7 +6,8 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from PIL import Image
 
 from app.db import db, AppPunch, OfficialPunch
-from app.ocr import extract_punches, _exif_date
+from app.ocr_app import extract_punches as _extract_app, _exif_date
+from app.ocr_official import extract_punches as _extract_official
 
 upload_bp = Blueprint('upload', __name__)
 
@@ -54,7 +55,10 @@ def upload():
         try:
             image_filename = _save_display_copy(tmp_path, source, ext)
             saved_path = os.path.join(_UPLOAD_DIR, image_filename)
-            punches = extract_punches(saved_path, source, fallback_date=fallback_date)
+            if source == 'app':
+                punches = _extract_app(saved_path, fallback_date=fallback_date)
+            else:
+                punches = _extract_official(saved_path)
         except Exception as e:
             flash(f'OCR error: {e}', 'danger')
             return redirect(url_for('upload.upload'))
