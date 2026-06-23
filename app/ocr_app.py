@@ -89,36 +89,14 @@ def _exif_date(image_path):
 
 
 def _preprocess(image_path):
-    """
-    Prepare a terminal photo for Tesseract.
-
-    Steps:
-      1. Crop to card content (removes bezel, sky, floor, EXIT button area)
-      2. Downscale to 1600px wide (Tesseract chokes on 8K)
-      3. Grayscale
-      4. Contrast boost x2.0
-      5. Binary threshold at 150 — recovers white text from teal time boxes
-
-    Tuning: if times are missing from raw OCR output, adjust the crop
-    percentages first, then try threshold values between 130-170.
-    """
     img = Image.open(image_path)
     w, h = img.size
-
-    # Crop: left 2%, top 10%, right 98%, bottom 68%
     img = img.crop((int(w * 0.02), int(h * 0.10), int(w * 0.98), int(h * 0.68)))
-
-    # Downscale
     if img.width > _TARGET_WIDTH:
         scale = _TARGET_WIDTH / img.width
         img = img.resize((int(img.width * scale), int(img.height * scale)), Image.LANCZOS)
-
-    # Grayscale + contrast + threshold
     img = img.convert('L')
-    img = ImageEnhance.Contrast(img).enhance(2.0)
-    img = img.point(lambda p: 255 if p > 150 else 0)
-
-    return img
+    return ImageEnhance.Contrast(img).enhance(1.2)
 
 
 def _page_confidence(img):
