@@ -10,8 +10,8 @@ Rules that follow from this:
   application code. Use `platform.system()` guards or environment variables instead.
 - **No Windows-only binaries.** Any system dependency (e.g. Tesseract) must be installable
   on Linux via `apt` / a Heroku buildpack. Document it in `Aptfile` or `Procfile` notes.
-- **Tesseract path** is set conditionally in `app/ocr.py` — Windows gets the hardcoded
-  installer path; Linux finds it on `PATH` automatically (no override needed).
+- **Tesseract path** is set conditionally in `app/ocr_app.py` and `app/ocr_official.py` —
+  Windows gets the hardcoded installer path; Linux finds it on `PATH` automatically.
 - **Secret key, DB URL, and any credentials** must come from environment variables before
   any production push. The current hardcoded key in `app/__init__.py` is dev-only.
 - **SQLite is fine for now.** Heroku's ephemeral filesystem means the DB resets on dyno
@@ -20,9 +20,97 @@ Rules that follow from this:
 
 When adding any new system-level dependency, ask: *does this work on a fresh Ubuntu dyno?*
 
+---
+
 ## Status
-Phase 1 in progress. OCR pipeline live, calendar reads DB, cross-check logic live.
-Scheduled time + daily total tracking added. Grievance form PDF is next.
+Phase 1 in progress. OCR pipeline refactored and tuned. Calendar reads DB. Cross-check
+logic live. Scheduled time + daily total tracking in place. Grievance form PDF is next.
+
+---
+
+## OCR Architecture — READ BEFORE TOUCHING OCR FILES
+
+The OCR pipeline was refactored on 2026-06-23 into two separate modules. The old
+monolithic `app/ocr.py` is deprecated and should be deleted once confirmed clean.
+
+### Two pipelines, two files
+
+| File | Source | Upload type |
+|---|---|---|
+| `app/ocr_app.py` | `source='app'` | Phone photo of UPS handheld terminal screen |
+| `app/ocr_official.py` | `source='official'` | Screenshot of UPS weekly web portal |
+
+`app/controllers/upload.py` routes to the correct pipeline based on `source`.
+Never add logic to the old `app/ocr.py` — it is dead code.
+
+### app/ocr_app.py — terminal photo pipeline
+
+Handles the "Punch Out Summary" card shown on the UPS handheld terminal after punching out.
+One image = one day = at most one DB record.
+
+**Preprocessing (tuned 2026-06-23):**
+- Crop: left 2%, top 10%, right 98%, bottom 68% — removes phone bezel and EXIT button area
+- Downscale to 1600px wide — Tesseract chokes on 8K Samsung Galaxy photos
+- Grayscale + light contrast boost (1.2×) — NO binary threshold
+- The threshold was removed because it destroyed label text. Light contrast only is correct.
+- Tuned against real photo: `20260623_091726.jpg` (8000×6000px, Samsung Galaxy)
+
+**Key constraint:** Time values appear inside teal/cyan boxes with white text. Too much
+contrast or any threshold makes these boxes go solid black and Tesseract loses the values.
+The 1.2× contrast is intentionally conservative — this is correct, do not "improve" it.
+
+**Regexes:**
+- `_PUNCH_RE` — matches "Punched In/Out" + time
+- `_SCHED_RE` — matches "Sch Time" / "Scheduled Time" + time
+- `_DAILY_TOTAL_RE` — matches "Daily Total" + HH:MM
+
+Note: OCR of a phone-of-screen photo often clips the left edge of labels
+("Punch Out Summary" → "ut Summary", "Sch Time" → "ch Time"). Regexes use
+loose prefixes to tolerate this. Do not tighten them without testing against
+real images via `ocr_debug.py`.
+
+### app/ocr_official.py — web portal screenshot pipeline
+
+Handles the UPS official weekly time system (Microsoft portal on UPS.com).
+One image = one week = multiple DB records (one per worked day).
+
+**Key quirk:** Portal stores times as decimal hours, not HH:MM.
+`4.17 = 4h 10m` (0.17 × 60 = 10.2 minutes). `_decimal_hours_to_time()` converts these.
+
+**Pay codes:**
+- `PAY ACTUAL` — normal worked day with start/end times
+- `No Card` — day where system has no punch record (grievable)
+
+---
+
+## Debug harness — ocr_debug.py
+
+`ocr_debug.py` in the project root is the primary tool for testing and tuning OCR.
+It routes to the correct pipeline and prints exactly what would be saved to the DB.
+
+```
+python ocr_debug.py app path/to/image.jpg
+python ocr_debug.py official path/to/image.jpg
+python ocr_debug.py app path/to/image.jpg "gold standard text for comparison"
+```
+
+**Output:**
+1. EXIF date (app pipeline only)
+2. RAW OCR TEXT — exactly what lands in `raw_ocr_text` column
+3. CONFIDENCE score (0.0–1.0)
+4. PARSED PUNCHES — the dict that would be inserted into the DB
+5. GOLD STANDARD CHECK — token match % (only if 3rd arg provided)
+
+The gold standard arg is optional. Pass Samsung Galaxy "copy text" output as the
+3rd argument to get a quick quality score. 80%+ = good. Below 50% = needs tuning.
+
+When OCR output is bad, the first thing to check is the preprocessed image:
+```
+python -c "from app.ocr_app import _preprocess; _preprocess('path/to/img.jpg').save('debug_preprocessed.png')"
+```
+Upload `debug_preprocessed.png` and visually inspect before changing any code.
+
+---
 
 ## End goal — why this tool exists
 A time discrepancy between the UPS app punch and the official system = missed pay.
@@ -40,98 +128,52 @@ was present before the shift start. A future "File Grievance (Early Punch)" feat
 use that screenshot as exhibit A on an early-punch form. Track this with `scheduled_time`
 (already in DB) and compare against `app` source `punch_in`.
 
+---
+
 ## UPS Business Logic — READ BEFORE WRITING CALCULATION CODE
 
-These rules come directly from the UPS Teamsters / IBT part-time contract and
-operational practice. Every calculation, flag, and grievance form must honor them.
-Do not deviate from these rules without explicit instruction.
-
 ### Work week and schedule
-
 - The operational week is **Sunday through Saturday**.
-- **Sunday is typically a no-service day** — no deliveries, usually no shifts.
-  It is the natural upload day for the prior Mon–Sat week.
+- **Sunday is typically a no-service day** — the natural upload day for the prior Mon–Sat week.
 - **Saturday evening shifts** can run past midnight into early Sunday. The punch date
-  for those records is **Saturday** — determined by EXIF timestamp, never by
-  the clock hour of the following calendar day. This is not an edge case; it is normal.
-- The weekly calendar view should span Sunday → Saturday to match the operational week.
+  for those records is **Saturday** — determined by EXIF timestamp, never by clock hour.
 
 ### Part-time overtime threshold
-
 > Part-time employees earn **1.5× pay for every minute worked beyond 5 hours (300 minutes)
 > in a single workday.**
 
-This is a **daily** threshold, not weekly. Do not apply a weekly hour total.
+This is a **daily** threshold, not weekly.
 
 ```
 regular_minutes  = min(actual_worked_minutes, 300)
 overtime_minutes = max(actual_worked_minutes - 300, 0)
-total_pay        = (regular_minutes * rate) + (overtime_minutes * rate * 1.5)
 ```
 
-Where `actual_worked_minutes = max(punch_out, scheduled_time) - effective_start`.
-The 5-hour clock starts at `effective_start`, which is `max(punch_in, scheduled_time)`
-unless the early punch has been proven (see below).
-
-When a discrepancy exists, always report **which side of the 5-hour line the disputed
-minutes fall on** — missed overtime minutes are worth 1.5× and must be flagged separately
-on the grievance form.
-
 ### Scheduled time is mandatory
-
 - `scheduled_time` must be present for any meaningful pay or overtime calculation.
-- The OCR pipeline reads it via `_SCHED_RE` from the terminal screen ("Scheduled HH:MM").
-- If OCR misses it, the Edit modal must be used to fill it in manually.
-- **Never calculate overtime or effective daily total without a known `scheduled_time`.**
-  Show a warning in the UI if it is missing rather than silently calculating with a wrong floor.
+- Never calculate overtime without a known `scheduled_time`. Show a UI warning if missing.
 
-### Early punch rules — two distinct states
+### Early punch rules
+**State A — no proof (default):** `effective_start = scheduled_time`. Early minutes don't count.
+**State B — proof present:** `effective_start = punch_in`. Early minutes are grievable.
 
-**State A — Early punch, no proof (default):**
-- `punch_in < scheduled_time`, and no proof has been attached or marked.
-- Treat `effective_start = scheduled_time`.
-- The early minutes do NOT count toward worked time.
-- Do not open a grievance for the early delta — it is within company rights.
-- Flag it in the UI as informational only ("punched in X min early — no proof on file").
+---
 
-**State B — Early punch, proof present:**
-- `punch_in < scheduled_time`, AND the UPS app screenshot constitutes proof that work
-  was being performed before the scheduled start.
-- Treat `effective_start = punch_in` (the actual clock-in time).
-- The early minutes DO count toward worked time and are grievable.
-- The grievance form for an early punch is a **separate form** from the standard
-  punch-time discrepancy form. It should include: date, scheduled start, actual punch-in,
-  early delta in minutes, and the screenshot as exhibit A.
+## Upload workflow
+- `source='app'` → UPS handheld terminal clock-in screenshots
+- `source='official'` → UPS weekly web portal screenshot
+- Upload Sunday after the full Mon–Sat week is complete.
 
-The DB does not yet have a `proof_status` column for early punches — add one when
-building the early punch grievance flow. Until then, all early punches are treated as
-State A (no proof assumed) and flagged for manual review.
-
-### Daily total mismatch interpretation
-
-The `daily_total_minutes` field comes from the terminal screen (what the system says you
-worked). The calculated total is derived from punch times with the scheduled-time floor
-applied. If they differ:
-
-- **System total > calculated total:** The system is crediting you more time than the
-  punch math shows — unusual, worth noting but not grievable.
-- **System total < calculated total:** You worked more than the system credited —
-  this IS grievable. The delta (in minutes) should be reported with its overtime
-  split (how many of those minutes fall past the 5-hour mark).
-
-## Upload workflow (UPS schedule)
-UPS operates Monday–Saturday. Sunday is the ideal upload day:
-- Upload **both** screenshot sources after the full Mon–Sat week is complete.
-- `source='app'`      → UPS handheld/terminal clock-in screenshots (taken at punch time).
-- `source='official'` → Punch Out Summary screen (the system being cross-referenced).
-- Cross-check pairs same-date punches across sources and flags time differences.
+---
 
 ## Stack
 - Python / Flask 3.x
-- SQLite (`database.db`) via Flask-SQLAlchemy — auto-created on first run
+- SQLite (`database.db`) via Flask-SQLAlchemy
 - OCR: pytesseract + Tesseract binary
-- PDF (planned): WeasyPrint — HTML/CSS → PDF, Linux-compatible, pip-installable
-- Frontend: Bootstrap 5 accordion + modals, Jinja2 templates, SASS via npm
+- PDF (planned): WeasyPrint
+- Frontend: Bootstrap 5, Jinja2, SASS via npm
+
+---
 
 ## Phases
 **Phase 1 (current):** Single-user, no auth. Goal: OCR → DB → weekly view → cross-check.
@@ -139,75 +181,43 @@ UPS operates Monday–Saturday. Sunday is the ideal upload day:
 
 Do not add auth or user tables until Phase 1 is stable.
 
+---
+
 ## Branching
 Git-flow style. Work on `develop`, feature branches off `develop`, releases cut into `main`.
 
+---
+
 ## Data model
-Defined in `app/db.py`. One table for now:
+Defined in `app/db.py`.
 
 ```
-punches: id, date, time, type ('in'|'out'), source ('app'|'official'),
-         raw_ocr_text, confidence, created_at
+app_punches:      id, date, punch_in, punch_out, scheduled_time,
+                  daily_total_minutes, raw_ocr_text, confidence,
+                  image_path, created_at
+
+official_punches: id, date, punch_in, punch_out, pay_code, gross_pay,
+                  pay_rate, daily_total_minutes, corrected,
+                  raw_ocr_text, confidence, created_at
 ```
 
-When Phase 2 arrives, add `user_id` FK — don't restructure the rest of the table.
-
-## Phase 2 architecture notes
-
-**This app is essentially an image gallery with OCR metadata.** Keep that mental model —
-it clarifies every design decision below.
-
-### Upload storage
-Store image files on disk, never in the DB. Path: `uploads/<user_id>/<filename>`.
-Downsample with Pillow before saving — phone screenshots are 3–5 MB, OCR doesn't
-need full resolution. Discard the original after downsampling.
-
-### Two-layer data model
-Upload records and punch records are separate concerns linked by a FK:
-
-```
-users:   id, email, password_hash, created_at
-
-uploads: id, user_id (FK), filepath, source ('app'|'official'),
-         uploaded_at, ocr_json (TEXT)
-
-punches: id, upload_id (FK), user_id (FK), date, time,
-         type ('in'|'out'), source, confidence, created_at
-```
-
-- `uploads.ocr_json` — raw Tesseract key-value output stored as a JSON string.
-  Debug artifact only; the app never queries inside it. SQLite handles JSON fine
-  with `json_extract()` if needed later.
-- `punches` rows are derived from an upload. One upload → many punches.
-- Both tables carry `user_id` so punches can be queried without joining uploads.
-
-### Why SQLite is still the right call
-SQLite is not a heavy relational system — it's a single file with SQL and built-in
-JSON support. It's the right fit for this workload. No need to switch engines.
-If it ever outgrows SQLite, Flask-SQLAlchemy makes migrating to PostgreSQL
-straightforward with minimal code changes.
-
-### File serving
-Serve uploaded images through a Flask route (`/uploads/<user_id>/<filename>`) so
-files stay outside the `static/` folder and access can be gated per-user later.
+---
 
 ## Conventions
 
-**DB access:** All queries go through `app/db.py`. No raw SQL scattered in controllers.
-Do not import `db` directly in templates or helpers — go through the controller layer.
-
+**DB access:** All queries go through `app/db.py`. No raw SQL in controllers.
 **Models:** Flask-SQLAlchemy ORM. Add new models to `app/db.py`.
-
-**Blueprints:** One blueprint per feature area under `app/controllers/`. Register in `app/__init__.py`.
-
-**Schema changes:** Use `db.create_all()` for now (Phase 1). Switch to Flask-Migrate
-when the schema stabilizes and needs version-controlled migrations.
-
-**No dead imports:** Don't leave unused blueprints or packages wired in. Auth routes
-(`/login`, `/register`, `/forgot`) exist as templates but the blueprint is NOT registered.
-
+**Blueprints:** One per feature area under `app/controllers/`. Register in `app/__init__.py`.
+**Schema changes:** Use `db.create_all()` for Phase 1. Switch to Flask-Migrate when stable.
+**No dead imports:** Don't leave unused blueprints or packages wired in.
 **Setup:** Delete `.venv` and rerun `setup_env.bat` for a clean environment rebuild.
-The `.venv` directory and `database.db` are not committed.
+**Secret key:** Currently hardcoded — move to env var before any networked deployment.
 
-**Secret key:** Currently hardcoded in `app/__init__.py` — acceptable for local single-user use.
-Move to env var before any networked or multi-user deployment.
+---
+
+## .gitignore reminders
+These should never be committed:
+- `database.db` — runtime file, resets on Heroku anyway
+- `debug_preprocessed.png` — temp debug artifact from ocr_debug.py
+- `output.zip` — git archive artifact
+- `.venv/` — local Python environment

@@ -2,45 +2,34 @@
 
 Personal tool for cross-checking UPS app clock-in/out times against the official UPS time system. Upload screenshots from both systems, OCR extracts the punch data, and the app shows a weekly view highlighting mismatches.
 
+---
+
 ## Setup
 
 ### 1. Install Tesseract OCR
 
 Tesseract is a system binary — it can't be pip-installed. Do this once per machine.
 
----
+**Windows (development)**
 
-**Windows (development machine)**
-
-1. Go to **https://github.com/UB-Mannheim/tesseract/wiki** and download the latest
-   **64-bit Windows installer** (filename looks like `tesseract-ocr-w64-setup-*.exe`).
-2. Run the installer. **Accept the default install path:**
-   ```
-   C:\Program Files\Tesseract-OCR\
-   ```
-   The app hard-codes this path for Windows. If you install somewhere else, update
-   `pytesseract.pytesseract.tesseract_cmd` in `app/ocr.py` to match.
-3. The "Add to PATH" checkbox is optional — the app sets the path in code.
-   Checking it lets you run `tesseract --version` in a terminal to confirm the install.
-4. Verify the install worked by running the debug script (after Python env is set up):
+1. Download the latest 64-bit installer from https://github.com/UB-Mannheim/tesseract/wiki
+2. Run the installer. Accept the default path: `C:\Program Files\Tesseract-OCR\`
+   The app hardcodes this path for Windows via `platform.system()` guard.
+3. Verify after Python env is set up:
    ```bat
-   python ocr_debug.py
+   python ocr_debug.py app uploads/test/YOUR_IMAGE.jpg
    ```
-   You should see the EXIF date, the raw OCR text, and two parsed punch dicts.
-
----
 
 **macOS**
 ```bash
 brew install tesseract
 ```
 
-**Linux (Debian/Ubuntu / Heroku)**
+**Linux / Heroku**
 ```bash
 sudo apt install tesseract-ocr
 ```
-On Heroku, add `tesseract-ocr` to an `Aptfile` in the project root and use the
-`heroku-buildpack-apt` buildpack — no code change needed, Linux finds it on PATH.
+On Heroku: add `tesseract-ocr` to an `Aptfile` and use `heroku-buildpack-apt`.
 
 ---
 
@@ -48,7 +37,6 @@ On Heroku, add `tesseract-ocr` to an `Aptfile` in the project root and use the
 
 **Windows**
 ```bat
-# Delete .venv first if rebuilding from scratch
 setup_env.bat
 python run.py
 ```
@@ -61,188 +49,167 @@ pip install -r config/requirements.txt
 python run.py
 ```
 
-Then open http://localhost:3000.
+Open http://localhost:3000. The SQLite database creates automatically on first run.
 
-The SQLite database (`database.db`) is created automatically on first run — no migration step needed.
+---
 
 ## Project structure
 
 ```
 upstimecheck/
 ├── app/
-│   ├── __init__.py          # App factory (create_app)
-│   ├── db.py                # SQLAlchemy instance + models
-│   ├── ocr.py               # Tesseract wrapper — screenshot → punch dicts
+│   ├── __init__.py           # App factory (create_app)
+│   ├── db.py                 # SQLAlchemy models
+│   ├── ocr_app.py            # OCR pipeline — UPS terminal phone photos
+│   ├── ocr_official.py       # OCR pipeline — UPS web portal screenshots
 │   ├── controllers/
-│   │   ├── pages.py         # Static placeholder routes (/, /features, /faq)
-│   │   ├── upload.py        # /upload — accepts screenshots, triggers OCR
+│   │   ├── pages.py          # Static routes
+│   │   ├── upload.py         # /upload — routes to correct OCR pipeline
 │   │   └── calendar/
-│   │       ├── calendar.py  # /cal weekly view route
-│   │       └── models.py    # Date helpers
+│   │       ├── calendar.py   # /cal weekly view
+│   │       └── models.py     # Date helpers
 │   ├── templates/
-│   │   ├── layouts/app.html # Base layout
-│   │   ├── upload/          # Upload form
-│   │   ├── calendar/        # Weekly accordion view
-│   │   ├── pages/           # Placeholder pages
-│   │   └── partials/        # Navbar, head, footer, etc.
-│   └── static/              # Fonts, images
+│   └── static/
 ├── config/
-│   ├── development.py       # Dev config (DEBUG, HOST, PORT)
-│   └── requirements.txt     # Python dependencies
-├── tests/
-├── database.db              # SQLite — auto-created, not committed
-├── run.py                   # Entry point: python run.py
-└── setup_env.bat            # Windows env bootstrap
+│   ├── development.py
+│   └── requirements.txt
+├── ocr_debug.py              # CLI debug harness — test both OCR pipelines
+├── database.db               # SQLite — auto-created, not committed
+├── run.py
+└── setup_env.bat             # Windows env bootstrap
 ```
+
+---
+
+## OCR pipelines
+
+There are two separate OCR pipelines, one per upload source:
+
+### app/ocr_app.py — terminal photo pipeline
+Handles phone photos of the UPS handheld terminal "Punch Out Summary" screen.
+One image → one day → one DB record.
+
+**Preprocessing (tuned 2026-06-23 against Samsung Galaxy 8000×6000px photos):**
+- Crop: 2% left, 10% top, 98% right, 68% bottom — removes bezel and EXIT button
+- Downscale to 1600px wide
+- Grayscale + 1.2× contrast boost (intentionally conservative — no threshold)
+
+The time values appear in teal boxes with white text. Heavy preprocessing destroys
+them. The 1.2× contrast is the correct setting — do not increase it.
+
+### app/ocr_official.py — web portal screenshot pipeline
+Handles screenshots of the UPS weekly time portal (Microsoft/UPS.com).
+One image → one week → multiple DB records (one per worked day).
+
+Times are stored as decimal hours in the portal: `4.17 = 4h 10m`.
+`_decimal_hours_to_time()` handles conversion.
+
+---
+
+## Debug harness
+
+`ocr_debug.py` is the primary tool for testing and tuning OCR output.
+
+```bash
+# Test app pipeline
+python ocr_debug.py app uploads/test/IMAGE.jpg
+
+# Test official pipeline
+python ocr_debug.py official uploads/test/IMAGE.jpg
+
+# Test with gold standard comparison
+python ocr_debug.py app uploads/test/IMAGE.jpg "Punched In 03:43 Punched Out 09:17"
+```
+
+**Output:**
+1. EXIF date (app only)
+2. Raw OCR text — exactly what lands in `raw_ocr_text` DB column
+3. Confidence score (0.0–1.0)
+4. Parsed punch dict — what would be inserted into the DB
+5. Gold standard check — token match % (optional, 80%+ is good)
+
+**To visually inspect the preprocessed image:**
+```bash
+python -c "from app.ocr_app import _preprocess; _preprocess('path/to/img.jpg').save('debug_preprocessed.png')"
+```
+
+---
 
 ## Data schema
 
-One table, `punches`, defined in `app/db.py`:
+### app_punches
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `date` | DATE | From EXIF metadata |
+| `punch_in` | TIME | |
+| `punch_out` | TIME | |
+| `scheduled_time` | TIME | OCR-scraped from terminal screen |
+| `daily_total_minutes` | INTEGER | System's own total, in minutes |
+| `raw_ocr_text` | TEXT | Raw Tesseract output for debugging |
+| `confidence` | FLOAT | OCR confidence 0.0–1.0 |
+| `image_path` | VARCHAR | Saved screenshot path |
+| `created_at` | DATETIME | |
 
+### official_punches
 | Column | Type | Notes |
 |---|---|---|
 | `id` | INTEGER PK | |
 | `date` | DATE | |
-| `time` | TIME | |
-| `type` | VARCHAR(3) | `'in'` or `'out'` |
-| `source` | VARCHAR(10) | `'app'` or `'official'` |
-| `raw_ocr_text` | TEXT | Raw OCR output for debugging |
-| `confidence` | FLOAT | OCR confidence score (0–1) |
-| `image_path` | VARCHAR(255) | Saved screenshot filename (served from `uploads/processed/`) |
-| `scheduled_time` | TIME | Company-confirmed shift start, OCR-scraped from terminal screen |
-| `daily_total_minutes` | INTEGER | Total time worked per the system screenshot (in minutes) |
-| `created_at` | DATETIME | Set automatically on insert |
-
-Cross-checking works by pairing rows with the same `date` and comparing `source='app'` vs `source='official'`.
-
-### Daily total logic
-
-Each upload may include a "Daily Total" field printed on the terminal screen — this is stored as `daily_total_minutes` (the system's own calculation). The app independently calculates `punch_out − punch_in` (using scheduled start time as the floor if you punched in early) and compares. A mismatch flags a discrepancy.
-
-### Early punch — future grievance opportunity
-
-If your app punch-in time is earlier than your `scheduled_time`, the company's system does **not** count those early minutes toward your pay — your paid time starts at the scheduled start, not when you actually arrived. However, the screenshot from the UPS app is timestamped evidence that you were on the clock before the scheduled time. A future "File Grievance (Early Punch)" feature will let you generate a form for those missed early minutes using this proof.
-
-## Why this tool exists
-
-A time discrepancy between the UPS app punch and the official system means missed pay.
-This tool detects those discrepancies and will auto-generate a **grievance form (PDF)**
-the user can file to recover the difference.
-
-**Upload workflow:** UPS operates Monday–Saturday. Upload both screenshot sources on Sunday
-after the full week is complete. Cross-check pairs same-date punches across both sources
-and flags any time differences.
-
-**OCR confidence score:** Every punch record stores a confidence score (0–100%) from
-Tesseract — how certain the engine was when reading the image. Photos of screens typically
-score 60–80%. A low score means extracted times may be wrong. Use the Edit function to
-correct them manually; the edit view shows the original image alongside editable fields.
+| `punch_in` | TIME | Converted from decimal hours |
+| `punch_out` | TIME | Converted from decimal hours |
+| `pay_code` | VARCHAR | `PAY ACTUAL` or `No Card` |
+| `gross_pay` | FLOAT | |
+| `pay_rate` | FLOAT | |
+| `daily_total_minutes` | INTEGER | |
+| `corrected` | BOOLEAN | True if start time had asterisk (*) |
+| `raw_ocr_text` | TEXT | |
+| `confidence` | FLOAT | |
+| `created_at` | DATETIME | |
 
 ---
 
 ## UPS Business Rules
 
-These are the contractual and operational rules that govern how this tool interprets
-punch data, calculates pay, and determines when a grievance is warranted. Every
-calculation and discrepancy flag in the app is built around these rules.
+### Work week
+- Operational week: **Sunday through Saturday**
+- Sunday = no service day, ideal upload day for prior week
+- Saturday late shifts crossing midnight = still **Saturday** date (EXIF is authoritative)
 
-### 1. Work week schedule
+### Part-time overtime — 5 hours/day
+> Every minute worked beyond 5 hours (300 min) in a single day = **1.5× pay**
 
-- **The operational week runs Sunday through Saturday.**
-- **Sunday is typically a no-service day.** Package delivery does not operate on Sunday
-  in most hubs. It is the default day off and the recommended day to upload the previous
-  week's screenshots for cross-checking.
-- **Saturday evening shifts** may start late and cross into early Sunday morning (e.g.,
-  a shift starting 11:00 PM Saturday). Those hours belong to the **Saturday** date for
-  pay purposes — the EXIF timestamp on the screenshot is the authoritative date, not the
-  clock-hour of the following calendar day.
-- The weekly view in this app spans **Sunday → Saturday** to reflect this schedule.
+```
+regular_minutes  = min(worked_minutes, 300)
+overtime_minutes = max(worked_minutes - 300, 0)
+```
 
-### 2. Part-time overtime threshold — 5 hours per day
+### Scheduled time
+Required for all calculations. Never calculate overtime without it.
+If missing from OCR, enter manually in the Edit modal.
 
-UPS part-time employees (the primary users of this tool) are covered under the
-Teamsters / IBT contract. The overtime rule for part-timers is:
-
-> **Any time worked beyond 5 hours in a single workday is paid at 1.5× the hourly rate.**
-
-This is a **daily** threshold, not a weekly one. Full-time employees have a different
-threshold — this tool is scoped to part-time only.
-
-| Hours worked | Pay rate |
-|---|---|
-| Up to 5:00 (300 min) | Regular (1×) |
-| Every minute after 5:00 | Overtime (1.5×) |
-
-The grievance form will use this to calculate the **monetary value** of a discrepancy.
-A 15-minute shortfall at the end of a 6-hour shift is worth more than the same 15 minutes
-at the start, because those minutes fall in the overtime window.
-
-### 3. Scheduled start time is required on every upload
-
-The **scheduled start time** — the company-confirmed time your shift begins — must be
-visible on the screenshot you upload. The OCR pipeline reads it from the terminal screen
-(look for "Scheduled" or "Sched" on the Punch Out Summary).
-
-Why it matters:
-- Paid time **begins at the scheduled start**, not at your actual punch-in time (unless
-  you can prove early work — see Rule 4).
-- The overtime 5-hour window counts from the scheduled start, not from actual punch-in.
-- Without a scheduled time, the daily total calculation and overtime split cannot be
-  correctly determined.
-
-If the scheduled time is missing from an image (low angle, cut off, etc.), enter it
-manually in the Edit modal — it is as important as the punch times themselves.
-
-### 4. Early punch policy — proof required for early pay
-
-**Clocking in early does NOT automatically entitle you to pay from that early time.**
-
-The company's system will begin counting your pay from your scheduled start time,
-regardless of when you physically punched in. This is by design and is within the
-company's contractual rights — **unless you can prove you were actively working
-before the scheduled start.**
-
-The rule, stated plainly:
-
-| Situation | Result |
-|---|---|
-| Punched in early, **no proof of work** | Scheduled start is valid; no grievance applies |
-| Punched in early, **with proof of work** | Early minutes are grievable; file for the difference |
-
-**What counts as proof?**
-The UPS app screenshot itself serves as timestamped evidence that you were on the
-premises and clocked in before the scheduled start. If the app shows an early punch
-and work was actively being performed (e.g., you were in the facility, on the belt,
-scanning packages), that screenshot is your exhibit A.
-
-A future "File Grievance (Early Punch)" feature in this tool will generate a separate
-form specifically for early-punch situations, attaching the screenshot as proof. Until
-then, the calendar view flags the early punch, shows the delta, and prompts you to
-decide whether to file.
-
-**What this means for the cross-check:**
-- If `app.punch_in < scheduled_time`, the system flags it as an early punch.
-- The daily total is still calculated from `scheduled_time` as the floor (not actual
-  punch-in) unless the early punch has been manually marked as proven.
-- A discrepancy between the system's daily total and the calculated total will still
-  appear — it is your prompt to decide whether the evidence supports filing.
+### Early punch
+- Early punch + no proof → `effective_start = scheduled_time` (company's right)
+- Early punch + proof → `effective_start = punch_in` (grievable)
+- The UPS app screenshot IS the proof for an early punch grievance
 
 ---
 
-## Current state (Phase 1, in progress)
+## Current state (Phase 1)
 
 - [x] Flask app boots, routes work
-- [x] `database.db` creates with correct schema on first run
-- [x] OCR pipeline — EXIF date, preprocessing, `Punched In/Out` parser, DB insert
-- [x] Scheduled time + daily total OCR-scraped and stored per punch
+- [x] OCR pipeline refactored — separate `ocr_app.py` and `ocr_official.py`
+- [x] `ocr_debug.py` unified debug harness for both pipelines
+- [x] Preprocessing tuned — terminal photos OCR correctly at 0.80+ confidence
+- [x] EXIF date extraction
+- [x] Scheduled time + daily total OCR-scraped and stored
 - [x] Weekly calendar — live DB data, accordion + View modals, confidence %
-- [x] Edit modal — original image on the left, editable time fields on the right
-- [x] Cross-check logic — flags punch time mismatches and daily total mismatches
-- [x] Early punch detection — flagged in calendar when `app.punch_in < scheduled_time`
-- [ ] Grievance form PDF — WeasyPrint (planned); "File Grievance" button is placeholder
-- [ ] Early punch grievance form — separate from standard discrepancy form
-- [ ] Overtime split on grievance form — show regular vs 1.5× portion of disputed time
+- [x] Edit modal — original image left, editable fields right
+- [x] Cross-check logic — flags punch time and daily total mismatches
+- [x] Early punch detection
+- [ ] Grievance form PDF — WeasyPrint (planned)
+- [ ] Early punch grievance form
+- [ ] Overtime split on grievance form
 
 ## Phase 2 (future)
-
-Multi-user accounts with encrypted credentials. The schema reserves space for a `user_id` FK once that's added. No auth code exists yet — don't add it until Phase 1 is complete and stable.
+Multi-user accounts. Schema reserves space for `user_id` FK. No auth code yet.
