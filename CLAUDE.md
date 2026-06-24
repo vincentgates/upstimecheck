@@ -28,6 +28,65 @@ logic live. Scheduled time + daily total tracking in place. Grievance form PDF i
 
 ---
 
+## 🆕 Session handoff — 2026-06-24
+
+### What was completed this session
+
+**Focus: `app/ocr_official.py` and `ocr_debug.py` — DONE and verified.**
+
+**Problem solved — TCD day (Mon 06/22) was silently skipped:**
+The old `_OFF_PAY_CODE_RE` only matched literal `PAY ACTUAL` or `No Card`. Monday had pay
+code `TEMP STS CHANGE - PAY ACTUAL` which didn't match, dropping the entire block.
+
+**Problem solved — pay code was hardcoded on insert:**
+`pay_code` was always written as `'PAY ACTUAL'` regardless of what the portal said.
+
+**Fix — two-format regex approach (applied and tested):**
+The UPS portal uses two different block layouts depending on pay code type:
+
+- **Normal days** (two-line): `Pay Code: Gross Pay:\nPAY ACTUAL  132.53`
+- **TCD/special days** (each field on its own line):
+  ```
+  Pay Code:
+  TEMP STS CHANGE - PAY ACTUAL
+  Gross Pay:
+  417.94
+  ```
+
+The fix uses two regexes and tries them in order:
+```python
+# Inline/multi-line: pay code text sits between Pay Code: and Gross Pay: labels
+_OFF_PAY_INLINE_RE  = re.compile(r'Pay\s+Code:\s*(.+?)\s+Gross\s+Pay:\s*([\d.]+)', re.IGNORECASE)
+# Standard two-line: "Pay Code: Gross Pay:\nPAY ACTUAL  132.53"
+_OFF_PAY_TWOLINE_RE = re.compile(r'Pay\s+Code:\s*Gross\s+Pay:\s*\n\s*(\S.+?)\s+([\d.]+)\s*$', re.IGNORECASE | re.MULTILINE)
+```
+
+Key insight: `_OFF_PAY_INLINE_RE` has no DOTALL but `\s` still matches newlines, so it
+correctly handles TCD blocks where each field is on its own line. The two-line format
+fails the inline regex (no captured text between labels) and falls through to `_OFF_PAY_TWOLINE_RE`.
+
+**`ocr_debug.py` — fixed to show all blocks:**
+Now prints RAW OCR BLOCK + PARSED FIELDS for every record, not just `punches[0]`.
+
+**Verified against test image — all 7 days parsed correctly:**
+```
+Sun 06/21  No Card           —         —        0 min
+Mon 06/22  TEMP STS CHANGE - PAY ACTUAL  08:55  19:16  590 min  ← was missing before
+Tue 06/23  PAY ACTUAL        04:10     09:17    307 min
+Wed 06/24  PAY ACTUAL        04:00     09:31    331 min
+Thu 06/25  No Card           —         —        0 min
+Fri 06/26  No Card           —         —        0 min
+Sat 06/27  No Card           —         —        0 min
+```
+Confidence: 0.947
+
+### What to do next
+
+1. Commit `app/ocr_official.py` and `ocr_debug.py`
+2. **Next feature: grievance form PDF generation** (see End Goal section below)
+
+---
+
 ## OCR Architecture — READ BEFORE TOUCHING OCR FILES
 
 The OCR pipeline was refactored on 2026-06-23 into two separate modules. The old
@@ -78,8 +137,14 @@ One image = one week = multiple DB records (one per worked day).
 `4.17 = 4h 10m` (0.17 × 60 = 10.2 minutes). `_decimal_hours_to_time()` converts these.
 
 **Pay codes:**
+Pay codes are captured as-is from the portal — whatever text appears between `Pay Code:`
+and `Gross Pay:` in a day block. Known examples include:
 - `PAY ACTUAL` — normal worked day with start/end times
+- `TEMP STS CHANGE - PAY ACTUAL` — TCD (Temporary Cover Driver) day
 - `No Card` — day where system has no punch record (grievable)
+
+Do NOT hardcode pay codes into the regex. The current approach captures any pay code
+automatically. If a new pay code causes a parse failure, check the raw OCR block first.
 
 ---
 
@@ -94,12 +159,11 @@ python ocr_debug.py official path/to/image.jpg
 python ocr_debug.py app path/to/image.jpg "gold standard text for comparison"
 ```
 
-**Output:**
-1. EXIF date (app pipeline only)
-2. RAW OCR TEXT — exactly what lands in `raw_ocr_text` column
-3. CONFIDENCE score (0.0–1.0)
-4. PARSED PUNCHES — the dict that would be inserted into the DB
-5. GOLD STANDARD CHECK — token match % (only if 3rd arg provided)
+**Output per punch record:**
+1. RAW OCR BLOCK — the raw text for that day block
+2. PARSED FIELDS — the dict that would be inserted into the DB
+3. CONFIDENCE score (page-level, same across all records)
+4. GOLD STANDARD CHECK — token match % (only if 3rd arg provided)
 
 The gold standard arg is optional. Pass Samsung Galaxy "copy text" output as the
 3rd argument to get a quick quality score. 80%+ = good. Below 50% = needs tuning.

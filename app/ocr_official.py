@@ -19,7 +19,10 @@ if platform.system() == 'Windows':
 # Times are DECIMAL HOURS — 4.17 = 4h 10m (0.17 × 60).
 # An asterisk on Start Time (e.g. "4.12*") is stored as corrected=True.
 _OFF_DATE_RE     = re.compile(r'(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{2}/\d{2}/\d{4})', re.IGNORECASE)
-_OFF_PAY_CODE_RE = re.compile(r'(PAY\s+ACTUAL|No\s+Card)\s+([\d.]+)', re.IGNORECASE)
+# Inline: "Pay Code: TEMP STS CHANGE - PAY ACTUAL Gross Pay: 132.53" (TCD-style)
+_OFF_PAY_INLINE_RE  = re.compile(r'Pay\s+Code:\s*(.+?)\s+Gross\s+Pay:\s*([\d.]+)', re.IGNORECASE)
+# Two-line: "Pay Code: Gross Pay:\nPAY ACTUAL  132.53" (normal days)
+_OFF_PAY_TWOLINE_RE = re.compile(r'Pay\s+Code:\s*Gross\s+Pay:\s*\n\s*(\S.+?)\s+([\d.]+)\s*$', re.IGNORECASE | re.MULTILINE)
 _OFF_START_RE    = re.compile(r'Start\s+Time:\s*([\d.N/A]+)(\*)?', re.IGNORECASE)
 _OFF_END_RE      = re.compile(r'End\s+Time:\s*([\d.N/A]+)', re.IGNORECASE)
 _OFF_RATE_RE     = re.compile(r'Pay\s+Rate:\s*([\d.]+)', re.IGNORECASE)
@@ -82,12 +85,16 @@ def _parse_official_weekly(raw_text, confidence):
         except ValueError:
             continue
 
-        pay_code_m = _OFF_PAY_CODE_RE.search(block)
-        if not pay_code_m:
-            continue
-
-        pay_code  = re.sub(r'\s+', ' ', pay_code_m.group(1).strip())
-        gross_pay = _safe_float(pay_code_m.group(2))
+        pay_m = _OFF_PAY_INLINE_RE.search(block)
+        if pay_m and pay_m.group(1).strip():
+            pay_code  = re.sub(r'\s+', ' ', pay_m.group(1).strip())
+            gross_pay = _safe_float(pay_m.group(2))
+        else:
+            pay_m = _OFF_PAY_TWOLINE_RE.search(block)
+            if not pay_m:
+                continue
+            pay_code  = re.sub(r'\s+', ' ', pay_m.group(1).strip())
+            gross_pay = _safe_float(pay_m.group(2))
 
         rate_m   = _OFF_RATE_RE.search(block)
         pay_rate = _safe_float(rate_m.group(1)) if rate_m else None
@@ -134,7 +141,7 @@ def _parse_official_weekly(raw_text, confidence):
 
         records.append({
             'date':                punch_date,
-            'pay_code':            'PAY ACTUAL',
+            'pay_code':            pay_code,
             'gross_pay':           gross_pay,
             'punch_in':            punch_in,
             'punch_out':           punch_out,

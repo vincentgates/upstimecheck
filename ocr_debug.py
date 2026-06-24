@@ -103,13 +103,22 @@ def main():
         from app.ocr_official import extract_punches
         punches = extract_punches(image_path)
 
-    # Raw OCR text and confidence come back on each punch record.
-    # For display we pull from the first record, or re-run if no punches found.
     if punches:
-        raw_text = punches[0].get('raw_ocr_text', '')
         confidence = punches[0].get('confidence', 0.0)
+        print(f"\n=== CONFIDENCE: {confidence} ===")
+        print(f"\n=== PARSED PUNCHES ({len(punches)} records) ===")
+        for i, p in enumerate(punches, 1):
+            print(f"\n--- Record {i} ---")
+            print("  RAW OCR BLOCK:")
+            for line in p.get('raw_ocr_text', '').splitlines():
+                print(f"    {line}")
+            print("  PARSED FIELDS:")
+            for k, v in p.items():
+                if k != 'raw_ocr_text':
+                    print(f"    {k}: {v}")
+        raw_text = '\n'.join(p.get('raw_ocr_text', '') for p in punches)
     else:
-        # Nothing parsed — still show raw text so you can diagnose why
+        # Nothing parsed — re-run OCR to show raw text for diagnosis
         if source == 'app':
             from app.ocr_app import _preprocess
         else:
@@ -119,21 +128,10 @@ def main():
         raw_text = pytesseract.image_to_string(img, config='--psm 6')
         confidence = 0.0
 
-    print("\n=== RAW OCR TEXT (raw_ocr_text column) ===")
-    print(raw_text)
-
-    print(f"\n=== CONFIDENCE: {confidence} ===")
-
-    print("\n=== PARSED PUNCHES (DB insert payload) ===")
-    if punches:
-        for p in punches:
-            # Print every field except raw_ocr_text (already shown above)
-            display = {k: v for k, v in p.items() if k != 'raw_ocr_text'}
-            for k, v in display.items():
-                print(f"  {k}: {v}")
-            print()
-    else:
-        print("  (no punches parsed — check raw OCR text above)")
+        print("\n=== RAW OCR TEXT (no punches parsed) ===")
+        print(raw_text)
+        print(f"\n=== CONFIDENCE: {confidence} ===")
+        print("\n=== PARSED PUNCHES: (none — check raw OCR text above) ===")
 
     if gold:
         matched, total, pct = _gold_check(raw_text, gold)
